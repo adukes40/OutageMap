@@ -1,7 +1,7 @@
 {
   "type": "FeatureCollection",
   "metadata": {
-    "generated_at": "2026-02-23T01:15:37.965855+00:00",
+    "generated_at": "2026-02-23T01:45:21.199921+00:00",
     "sources": [
       {
         "name": "Delmarva Power",
@@ -10,7 +10,7 @@
       },
       {
         "name": "DE Electric Co-op",
-        "via": "Siena Tech",
+        "via": "PowerOutage.us",
         "count": 0
       }
     ],
