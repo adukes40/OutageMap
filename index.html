@@ -51,6 +51,8 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .pp-r:last-child{border:none}
 .pp-l{color:#64748b}
 .pp-v{font-weight:600;color:#fff}
+.dec-tooltip{background:rgba(15,23,42,.95)!important;border:1px solid rgba(168,85,247,.3)!important;border-radius:8px!important;color:#e0e6f0!important;padding:8px 12px!important;box-shadow:0 4px 20px rgba(0,0,0,.5)!important}
+.dec-tooltip .leaflet-tooltip-top:before,.dec-tooltip.leaflet-tooltip-bottom:before{border-top-color:rgba(168,85,247,.3)!important}
 .rbtn{position:absolute;bottom:16px;right:12px;z-index:1000;background:rgba(59,130,246,.2);border:1px solid rgba(59,130,246,.3);color:#60a5fa;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:.75rem;font-weight:600;transition:all .2s;backdrop-filter:blur(10px)}
 .rbtn:hover{background:rgba(59,130,246,.35)}
 .empty{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;text-align:center;background:rgba(15,23,42,.92);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:32px 40px;display:none}
@@ -132,6 +134,48 @@ function parseDecRaw(xmlText) {
   });
   return out;
 }
+
+// ── ZIP → county + city lookup ──
+const ZIP_META = {
+  "19901":{city:"Dover",county:"Kent"},
+  "19902":{city:"Dover AFB",county:"Kent"},
+  "19904":{city:"Dover",county:"Kent"},
+  "19930":{city:"Bethany Beach",county:"Sussex"},
+  "19931":{city:"Bishopville",county:"Sussex"},
+  "19933":{city:"Bridgeville",county:"Sussex"},
+  "19934":{city:"Camden Wyoming",county:"Kent"},
+  "19938":{city:"Clayton",county:"Kent"},
+  "19939":{city:"Dagsboro",county:"Sussex"},
+  "19940":{city:"Delmar",county:"Sussex"},
+  "19941":{city:"Ellendale",county:"Sussex"},
+  "19943":{city:"Felton",county:"Kent"},
+  "19944":{city:"Fenwick Island",county:"Sussex"},
+  "19945":{city:"Frankford",county:"Sussex"},
+  "19946":{city:"Frederica",county:"Kent"},
+  "19947":{city:"Georgetown",county:"Sussex"},
+  "19950":{city:"Greenwood",county:"Sussex"},
+  "19951":{city:"Harbeson",county:"Sussex"},
+  "19952":{city:"Harrington",county:"Kent"},
+  "19953":{city:"Hartly",county:"Kent"},
+  "19954":{city:"Houston",county:"Kent"},
+  "19955":{city:"Kenton",county:"Kent"},
+  "19956":{city:"Laurel",county:"Sussex"},
+  "19958":{city:"Lewes",county:"Sussex"},
+  "19960":{city:"Lincoln",county:"Sussex"},
+  "19962":{city:"Magnolia",county:"Kent"},
+  "19963":{city:"Milford",county:"Sussex"},
+  "19964":{city:"Marydel",county:"Kent"},
+  "19966":{city:"Millsboro",county:"Sussex"},
+  "19967":{city:"Millville",county:"Sussex"},
+  "19968":{city:"Milton",county:"Sussex"},
+  "19970":{city:"Ocean View",county:"Sussex"},
+  "19971":{city:"Rehoboth Beach",county:"Sussex"},
+  "19973":{city:"Seaford",county:"Sussex"},
+  "19975":{city:"Selbyville",county:"Sussex"},
+  "19977":{city:"Smyrna",county:"Kent"},
+  "19979":{city:"Viola",county:"Kent"},
+  "19980":{city:"Woodside",county:"Kent"},
+};
 
 // ── Map setup ──
 const map = L.map("map", {zoomControl:false, attributionControl:false}).setView([39.0,-75.5], 9);
@@ -242,7 +286,25 @@ async function loadData() {
         <div class="pp-r"><span class="pp-l">Severity</span><span class="pp-v">${s.l}</span></div>
         <div class="pp-r"><span class="pp-l">ZIP Code</span><span class="pp-v">${poly.name}</span></div>
       `;
-      lPoly.bindPopup(popupHtml, {maxWidth:280});
+      const meta = ZIP_META[poly.name] || {city:"—", county:"—"};
+      const tooltipHtml = `
+        <div style="font-size:.8rem;line-height:1.7">
+          <div style="font-weight:700;font-size:.9rem;margin-bottom:3px;color:${s.c}">${meta.city}</div>
+          <div style="color:#94a3b8;font-size:.7rem;margin-bottom:5px">${meta.county} County · ZIP ${poly.name}</div>
+          <div style="display:flex;justify-content:space-between;gap:16px">
+            <span style="color:#64748b">Customers</span>
+            <span style="font-weight:700;color:${s.c}">${n.toLocaleString()}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;gap:16px">
+            <span style="color:#64748b">Severity</span>
+            <span style="font-weight:600;color:#fff">${s.l}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;gap:16px">
+            <span style="color:#64748b">Provider</span>
+            <span style="font-weight:600;color:#c084fc">DE Electric Co-op</span>
+          </div>
+        </div>`;
+      lPoly.bindTooltip(tooltipHtml, {sticky:true, opacity:1, className:"dec-tooltip"});
       lPoly.on("mouseover", function() { this.setStyle({fillOpacity:0.65, weight:3}); });
       lPoly.on("mouseout",  function() { this.setStyle({fillOpacity:0.45, weight:2.5}); });
 
