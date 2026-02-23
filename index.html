@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Delaware Power Outage Map</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0a0e1a;color:#e0e6f0;overflow:hidden;height:100vh}
+#map{width:100%;height:100vh}
+
+/* Header */
+.hdr{position:absolute;top:0;left:0;right:0;z-index:1000;background:linear-gradient(180deg,rgba(10,14,26,.97),rgba(10,14,26,.85) 80%,transparent);padding:12px 16px 22px;pointer-events:none}
+.hdr>*{pointer-events:auto}
+.hdr h1{font-size:1.2rem;font-weight:700;background:linear-gradient(135deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;display:inline}
+.badge{font-size:.6rem;padding:2px 7px;border-radius:20px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;vertical-align:middle;margin-left:8px}
+.b-live{background:rgba(52,211,153,.15);color:#34d399;border:1px solid rgba(52,211,153,.3);animation:pulse 2s infinite}
+.b-stale{background:rgba(251,191,36,.15);color:#fbbf24;border:1px solid rgba(251,191,36,.3)}
+.b-err{background:rgba(248,113,113,.15);color:#f87171;border:1px solid rgba(248,113,113,.3)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
+.stats{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+.st{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:5px 12px;display:flex;align-items:center;gap:6px}
+.st b{font-size:1.1rem;color:#fff}
+.st span{font-size:.65rem;color:#94a3b8;text-transform:uppercase}
+.ts{font-size:.65rem;color:#64748b;margin-top:6px}
+
+/* Side panel */
+.panel{position:absolute;top:88px;right:12px;z-index:1000;width:320px;max-height:calc(100vh - 100px);overflow-y:auto;display:flex;flex-direction:column;gap:6px}
+.panel::-webkit-scrollbar{width:3px}
+.panel::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:3px}
+.card{background:rgba(15,23,42,.92);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:12px;cursor:pointer;transition:all .2s}
+.card:hover{border-color:rgba(96,165,250,.4);transform:translateY(-1px)}
+.card-top{display:flex;justify-content:space-between;align-items:start;margin-bottom:6px}
+.prov{font-size:.6rem;padding:2px 7px;border-radius:5px;font-weight:600}
+.prov-d{background:rgba(59,130,246,.2);color:#60a5fa}
+.prov-e{background:rgba(168,85,247,.2);color:#c084fc}
+.card-n{font-size:1.2rem;font-weight:800;color:#fff}
+.card-r{display:flex;justify-content:space-between;font-size:.72rem;padding:2px 0}
+.card-r .l{color:#64748b}
+.card-r .v{color:#cbd5e1;font-weight:500}
+
+/* Legend */
+.legend{position:absolute;bottom:16px;left:12px;z-index:1000;background:rgba(15,23,42,.92);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px 16px;font-size:.75rem}
+.legend h3{font-size:.65rem;color:#94a3b8;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px}
+.lg-i{display:flex;align-items:center;gap:7px;margin-bottom:4px;color:#cbd5e1}
+.lg-d{width:12px;height:12px;border-radius:50%;flex-shrink:0}
+.lg-p{display:flex;align-items:center;gap:7px;margin-top:8px;padding-top:6px;border-top:1px solid rgba(255,255,255,.07);color:#cbd5e1}
+.lg-l{width:12px;height:3px;border-radius:2px;flex-shrink:0}
+
+/* Popups */
+.leaflet-popup-content-wrapper{background:rgba(15,23,42,.95)!important;border:1px solid rgba(255,255,255,.1)!important;border-radius:10px!important;color:#e0e6f0!important}
+.leaflet-popup-tip{background:rgba(15,23,42,.95)!important}
+.leaflet-popup-content{margin:10px 14px!important;font-size:.82rem;line-height:1.6}
+.pp-t{font-weight:700;font-size:.95rem;margin-bottom:4px}
+.pp-p{font-size:.65rem;padding:2px 7px;border-radius:5px;font-weight:600;display:inline-block;margin-bottom:6px}
+.pp-r{display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+.pp-r:last-child{border:none}
+.pp-l{color:#64748b}
+.pp-v{font-weight:600;color:#fff}
+
+/* Refresh */
+.rbtn{position:absolute;bottom:16px;right:12px;z-index:1000;background:rgba(59,130,246,.2);border:1px solid rgba(59,130,246,.3);color:#60a5fa;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:.75rem;font-weight:600;transition:all .2s;backdrop-filter:blur(10px)}
+.rbtn:hover{background:rgba(59,130,246,.35)}
+
+/* Empty state */
+.empty{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;text-align:center;background:rgba(15,23,42,.92);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:32px 40px}
+.empty h2{font-size:1.1rem;margin-bottom:8px;color:#fff}
+.empty p{font-size:.82rem;color:#94a3b8;line-height:1.6;max-width:340px}
+
+/* Mobile */
+@media(max-width:640px){
+  .panel{display:none}
+  .hdr h1{font-size:1rem}
+  .st{padding:4px 8px}
+  .st b{font-size:.9rem}
+}
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div class="hdr">
+  <div>
+    <h1>⚡ Delaware Power Outages</h1>
+    <span id="badge" class="badge b-err">Loading...</span>
+  </div>
+  <div class="stats">
+    <div class="st"><b id="s-out">-</b><span>Outages</span></div>
+    <div class="st"><b id="s-cust">-</b><span>Customers</span></div>
+    <div class="st"><b id="s-dpl">-</b><span>Delmarva</span></div>
+    <div class="st"><b id="s-dec">-</b><span>DEC</span></div>
+  </div>
+  <div class="ts" id="ts"></div>
+</div>
+
+<div class="panel" id="panel"></div>
+
+<div class="legend">
+  <h3>Severity</h3>
+  <div class="lg-i"><div class="lg-d" style="background:#34d399"></div>1–100 customers</div>
+  <div class="lg-i"><div class="lg-d" style="background:#fbbf24"></div>101–500</div>
+  <div class="lg-i"><div class="lg-d" style="background:#f87171"></div>501–2,000</div>
+  <div class="lg-i"><div class="lg-d" style="background:#ef4444;box-shadow:0 0 6px rgba(239,68,68,.5)"></div>2,000+</div>
+  <div class="lg-p"><div class="lg-l" style="background:#3b82f6"></div>Delmarva Power</div>
+  <div class="lg-p"><div class="lg-l" style="background:#a855f7"></div>DE Electric Co-op</div>
+</div>
+
+<button class="rbtn" onclick="loadData()">↻ Refresh</button>
+
+<div class="empty" id="empty" style="display:none">
+  <h2>No Active Outages</h2>
+  <p>All clear in Delaware! The scraper last ran at the time shown above. Data refreshes every 15 minutes.</p>
+</div>
+
+<script>
+// ── CONFIG ──
+// UPDATE THIS to your GitHub username/repo:
+const REPO = "adukes40/delaware-power-outages";
+const DATA_URL = `https://raw.githubusercontent.com/${REPO}/main/data/outages.geojson`;
+
+// ── MAP SETUP ──
+const map = L.map("map", {zoomControl: false, attributionControl: false}).setView([39.0, -75.5], 9);
+L.control.zoom({position: "bottomleft"}).addTo(map);
+L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+  maxZoom: 19, subdomains: "abcd"
+}).addTo(map);
+
+// Delaware counties (simplified)
+const counties = {
+  type: "FeatureCollection",
+  features: [
+    {type:"Feature",properties:{name:"New Castle"},geometry:{type:"Polygon",coordinates:[[[-75.79,39.72],[-75.64,39.84],[-75.41,39.80],[-75.34,39.72],[-75.41,39.56],[-75.51,39.45],[-75.58,39.46],[-75.70,39.51],[-75.76,39.58],[-75.79,39.72]]]}},
+    {type:"Feature",properties:{name:"Kent"},geometry:{type:"Polygon",coordinates:[[[-75.70,39.24],[-75.58,39.46],[-75.51,39.45],[-75.41,39.38],[-75.34,39.26],[-75.32,39.15],[-75.35,39.05],[-75.41,38.97],[-75.52,38.97],[-75.63,39.02],[-75.70,39.10],[-75.70,39.24]]]}},
+    {type:"Feature",properties:{name:"Sussex"},geometry:{type:"Polygon",coordinates:[[[-75.70,39.10],[-75.63,39.02],[-75.52,38.97],[-75.41,38.97],[-75.35,38.90],[-75.30,38.78],[-75.19,38.66],[-75.09,38.55],[-75.05,38.46],[-75.07,38.45],[-75.62,38.45],[-75.69,38.55],[-75.72,38.64],[-75.73,38.75],[-75.74,38.89],[-75.72,39.00],[-75.70,39.10]]]}}
+  ]
+};
+const cSty = {color:"rgba(148,163,184,0.25)",weight:1.5,fillColor:"rgba(30,41,59,0.15)",fillOpacity:0.4};
+const cLayer = L.geoJSON(counties, {
+  style: () => cSty,
+  onEachFeature: (f, ly) => {
+    ly.on("mouseover", () => { ly.setStyle({color:"rgba(96,165,250,0.4)",weight:2,fillColor:"rgba(30,58,138,0.25)",fillOpacity:0.5}); ly.bindTooltip(f.properties.name+" County",{sticky:true}).openTooltip(); });
+    ly.on("mouseout", () => { cLayer.resetStyle(ly); ly.closeTooltip(); });
+  }
+}).addTo(map);
+
+let mGroup = L.layerGroup().addTo(map);
+let aGroup = L.layerGroup().addTo(map);
+
+// ── HELPERS ──
+function sev(n) {
+  if (n > 2000) return {c:"#ef4444",l:"Critical"};
+  if (n > 500) return {c:"#f87171",l:"High"};
+  if (n > 100) return {c:"#fbbf24",l:"Medium"};
+  return {c:"#34d399",l:"Low"};
+}
+function fmt(iso) {
+  if (!iso) return "N/A";
+  try { return new Date(iso).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}); }
+  catch { return iso; }
+}
+function elapsed(iso) {
+  if (!iso) return "";
+  const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (m < 0) return "";
+  if (m < 60) return m + "m ago";
+  return Math.floor(m/60) + "h " + (m%60) + "m ago";
+}
+
+// ── RENDER ──
+function render(geojson) {
+  mGroup.clearLayers();
+  aGroup.clearLayers();
+
+  const feats = geojson.features || [];
+  const meta = geojson.metadata || {};
+
+  // Stats
+  let nDpl = 0, nDec = 0, totCust = 0;
+  feats.forEach(f => {
+    const p = f.properties;
+    const n = p.customers_affected || 0;
+    totCust += n;
+    if (p.provider && p.provider.includes("Co-op")) nDec++; else nDpl++;
+  });
+
+  document.getElementById("s-out").textContent = feats.length;
+  document.getElementById("s-cust").textContent = totCust.toLocaleString();
+  document.getElementById("s-dpl").textContent = nDpl;
+  document.getElementById("s-dec").textContent = nDec;
+
+  const genAt = meta.generated_at;
+  if (genAt) {
+    const age = Math.floor((Date.now() - new Date(genAt).getTime()) / 60000);
+    document.getElementById("ts").textContent = "Data from " + fmt(genAt) + " (" + (age < 60 ? age+"m ago" : Math.floor(age/60)+"h ago") + ")";
+    const b = document.getElementById("badge");
+    if (age < 30) { b.textContent = "LIVE"; b.className = "badge b-live"; }
+    else { b.textContent = "STALE " + Math.floor(age/60) + "h"; b.className = "badge b-stale"; }
+  }
+
+  // Empty state
+  document.getElementById("empty").style.display = feats.length === 0 ? "block" : "none";
+
+  // Markers
+  feats.forEach(f => {
+    const p = f.properties;
+    const n = p.customers_affected || 0;
+    const s = sev(n);
+    const g = f.geometry;
+    let lat, lng;
+
+    if (g.type === "Point") {
+      lng = g.coordinates[0]; lat = g.coordinates[1];
+    } else if (g.type === "Polygon") {
+      // Centroid approximation
+      const cs = g.coordinates[0];
+      lat = cs.reduce((a,c) => a+c[1], 0) / cs.length;
+      lng = cs.reduce((a,c) => a+c[0], 0) / cs.length;
+      // Draw polygon
+      L.geoJSON(g, {style:{color:s.c,fillColor:s.c,fillOpacity:0.15,weight:1.5}}).addTo(aGroup);
+    } else return;
+
+    // Glow circle
+    L.circle([lat, lng], {radius: Math.min(Math.max(n * 3, 400), 8000), color: s.c, fillColor: s.c, fillOpacity: 0.07, weight: 0.5, opacity: 0.3}).addTo(aGroup);
+
+    const isDec = p.provider && p.provider.includes("Co-op");
+    const pColor = isDec ? "#a855f7" : "#3b82f6";
+    const pClass = isDec ? "prov-e" : "prov-d";
+    const pName = isDec ? "DE Electric Co-op" : "Delmarva Power";
+
+    const marker = L.circleMarker([lat, lng], {
+      radius: Math.min(Math.max(7, n / 70), 26),
+      color: pColor, fillColor: s.c, fillOpacity: 0.85, weight: 2.5, opacity: 0.9
+    }).addTo(mGroup);
+
+    marker.bindPopup(`
+      <div class="pp-t">${pName} Outage</div>
+      <span class="pp-p ${pClass}">${pName}</span>
+      <div class="pp-r"><span class="pp-l">Customers</span><span class="pp-v" style="color:${s.c}">${n.toLocaleString()}</span></div>
+      <div class="pp-r"><span class="pp-l">Severity</span><span class="pp-v">${s.l}</span></div>
+      <div class="pp-r"><span class="pp-l">Cause</span><span class="pp-v">${p.cause || "Unknown"}</span></div>
+      <div class="pp-r"><span class="pp-l">Started</span><span class="pp-v">${fmt(p.start_time)} ${elapsed(p.start_time)}</span></div>
+      <div class="pp-r"><span class="pp-l">Est. Restore</span><span class="pp-v">${p.etr ? fmt(p.etr) : "Assessing"}</span></div>
+      <div class="pp-r"><span class="pp-l">ID</span><span class="pp-v" style="font-size:.7rem;color:#64748b">${p.id || "—"}</span></div>
+    `, {maxWidth: 280});
+  });
+
+  // Side panel
+  const sorted = [...feats].sort((a,b) => (b.properties.customers_affected||0) - (a.properties.customers_affected||0));
+  const panel = document.getElementById("panel");
+  panel.innerHTML = sorted.slice(0, 20).map(f => {
+    const p = f.properties;
+    const n = p.customers_affected || 0;
+    const s = sev(n);
+    const isDec = p.provider && p.provider.includes("Co-op");
+    const g = f.geometry;
+    let lat = 0, lng = 0;
+    if (g.type === "Point") { lng = g.coordinates[0]; lat = g.coordinates[1]; }
+    else if (g.type === "Polygon") { const cs = g.coordinates[0]; lat = cs.reduce((a,c)=>a+c[1],0)/cs.length; lng = cs.reduce((a,c)=>a+c[0],0)/cs.length; }
+
+    return `<div class="card" onclick="map.flyTo([${lat},${lng}],13)">
+      <div class="card-top">
+        <span class="prov ${isDec?'prov-e':'prov-d'}">${isDec?'DE Electric Co-op':'Delmarva Power'}</span>
+        <span class="card-n" style="color:${s.c}">${n.toLocaleString()}</span>
+      </div>
+      <div class="card-r"><span class="l">Cause</span><span class="v">${p.cause||'Unknown'}</span></div>
+      <div class="card-r"><span class="l">Since</span><span class="v">${fmt(p.start_time)}</span></div>
+      <div class="card-r"><span class="l">ETA</span><span class="v">${p.etr?fmt(p.etr):'Assessing'}</span></div>
+    </div>`;
+  }).join("");
+}
+
+// ── LOAD DATA ──
+async function loadData() {
+  const b = document.getElementById("badge");
+  b.textContent = "LOADING..."; b.className = "badge b-stale";
+
+  try {
+    const resp = await fetch(DATA_URL + "?t=" + Date.now());
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    const data = await resp.json();
+    render(data);
+  } catch (e) {
+    console.error("Failed to load outage data:", e);
+    b.textContent = "ERROR"; b.className = "badge b-err";
+    document.getElementById("ts").textContent = "Could not load data. Make sure the scraper has run at least once and the REPO variable is set correctly.";
+    document.getElementById("empty").style.display = "block";
+    document.querySelector("#empty h2").textContent = "Data Not Available";
+    document.querySelector("#empty p").textContent = "Check that the GitHub repo path is correct in this file and that the scraper Action has run successfully at least once.";
+  }
+}
+
+// Initial load and auto-refresh every 5 minutes
+loadData();
+setInterval(loadData, 5 * 60 * 1000);
+</script>
+</body>
+</html>
