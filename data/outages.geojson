@@ -1,0 +1,13 @@
+{
+  "type": "FeatureCollection",
+  "metadata": {
+    "generated_at": "2026-02-22T00:00:00+00:00",
+    "sources": [
+      {"name": "Delmarva Power", "via": "KUBRA Storm Center", "count": 0},
+      {"name": "DE Electric Co-op", "via": "Siena Tech", "count": 0}
+    ],
+    "total_outages": 0,
+    "total_customers_affected": 0
+  },
+  "features": []
+}
