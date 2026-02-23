@@ -182,20 +182,7 @@ const map = L.map("map", {zoomControl:false, attributionControl:false}).setView(
 L.control.zoom({position:"bottomleft"}).addTo(map);
 L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {maxZoom:19, subdomains:"abcd"}).addTo(map);
 
-// County outlines
-const counties = {type:"FeatureCollection",features:[
-  {type:"Feature",properties:{name:"New Castle"},geometry:{type:"Polygon",coordinates:[[[-75.79,39.72],[-75.64,39.84],[-75.41,39.80],[-75.34,39.72],[-75.41,39.56],[-75.51,39.45],[-75.58,39.46],[-75.70,39.51],[-75.76,39.58],[-75.79,39.72]]]}},
-  {type:"Feature",properties:{name:"Kent"},geometry:{type:"Polygon",coordinates:[[[-75.70,39.24],[-75.58,39.46],[-75.51,39.45],[-75.41,39.38],[-75.34,39.26],[-75.32,39.15],[-75.35,39.05],[-75.41,38.97],[-75.52,38.97],[-75.63,39.02],[-75.70,39.10],[-75.70,39.24]]]}},
-  {type:"Feature",properties:{name:"Sussex"},geometry:{type:"Polygon",coordinates:[[[-75.70,39.10],[-75.63,39.02],[-75.52,38.97],[-75.41,38.97],[-75.35,38.90],[-75.30,38.78],[-75.19,38.66],[-75.09,38.55],[-75.05,38.46],[-75.07,38.45],[-75.62,38.45],[-75.69,38.55],[-75.72,38.64],[-75.73,38.75],[-75.74,38.89],[-75.72,39.00],[-75.70,39.10]]]}}
-]};
-const cSty = {color:"rgba(148,163,184,0.25)",weight:1.5,fillColor:"rgba(30,41,59,0.15)",fillOpacity:0.4};
-const cLayer = L.geoJSON(counties, {
-  style: () => cSty,
-  onEachFeature: (f, ly) => {
-    ly.on("mouseover", () => { ly.setStyle({color:"rgba(96,165,250,0.4)",weight:2,fillColor:"rgba(30,58,138,0.25)",fillOpacity:0.5}); ly.bindTooltip(f.properties.name+" County",{sticky:true}).openTooltip(); });
-    ly.on("mouseout",  () => { cLayer.resetStyle(ly); ly.closeTooltip(); });
-  }
-}).addTo(map);
+
 
 const polyGroup   = L.layerGroup().addTo(map); // DEC polygons (bottom)
 const markerGroup = L.layerGroup().addTo(map); // all markers (top)
