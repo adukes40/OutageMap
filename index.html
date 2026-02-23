@@ -248,26 +248,37 @@ async function loadData() {
     const allItems = [];
     const now = new Date().toISOString();
 
+    // Debug: log raw responses to console so we can inspect structure
+    console.log("=== /delmarva/outages ===", JSON.stringify(dplSummary).slice(0, 500));
+    console.log("=== /delmarva/detail ===",  JSON.stringify(dplDetail).slice(0, 500));
+    console.log("=== /dec/outages ===",       JSON.stringify(decOutages).slice(0, 500));
+
     // ── Delmarva (Kubra) ──
-    const dplOutages = dplDetail.outages || [];
+    // Handle both {outages:[...]} wrapper and bare array
+    const dplOutages = dplDetail?.outages ?? (Array.isArray(dplDetail) ? dplDetail : []);
     for (const o of dplOutages) {
+      // cust_a.val is customers affected; n_out is number of separate outages in cluster
       const n = o.desc?.cust_a?.val ?? o.desc?.n_out ?? 0;
       if (!n) continue;
+      // geom.p is an array of encoded polyline strings; first point is the location
       const enc = o.geom?.p?.[0];
       if (!enc) continue;
       const coords = decodePolyline(enc);
       if (!coords.length) continue;
       const [lat, lng] = coords[0];
-      const etr = o.desc?.etr === "ETR-NULL" ? null : o.desc?.etr;
+      const etr = (!o.desc?.etr || o.desc.etr === "ETR-NULL") ? null : o.desc.etr;
       const item = placeMarker(lat, lng, n, "Delmarva", o.id, o.desc?.cause, o.desc?.start_time, etr);
       allItems.push(item);
     }
 
     // ── DEC (Sienatech) ──
-    const decList = Array.isArray(decOutages) ? decOutages : [];
+    // Response may be bare array or wrapped
+    const decList = Array.isArray(decOutages)
+      ? decOutages
+      : (Array.isArray(decOutages?.data) ? decOutages.data : []);
     for (const o of decList) {
       const poly = DEC_POLY[o.ref];
-      if (!poly) continue;
+      if (!poly) { console.warn("DEC: no polygon for ref", o.ref); continue; }
       const n = o.affected || 0;
       if (!n) continue;
       const item = placeMarker(poly.lat, poly.lng, n, "DEC", `dec-${o.ref}`, null, null, null);
@@ -276,10 +287,12 @@ async function loadData() {
     }
 
     // ── Stats ──
-    const totals = dplSummary?.summaryFileData?.totals?.[0];
+    // dplSummary structure: {summaryFileData:{totals:[{total_cust_a:{val:N}, total_outages:N}]}}
+    const totals = dplSummary?.summaryFileData?.totals?.[0]
+                ?? dplSummary?.totals?.[0]; // fallback if wrapper differs
     const dplCust = totals?.total_cust_a?.val ?? 0;
     const dplOutageCount = totals?.total_outages ?? dplOutages.length;
-    const decCust = decList.reduce((s, o) => s + (o.affected || 0), 0);
+    const decCust  = decList.reduce((s, o) => s + (o.affected || 0), 0);
     const decCount = decList.filter(o => o.affected > 0).length;
 
     document.getElementById("s-out").textContent  = (dplOutageCount + decCount).toLocaleString();
