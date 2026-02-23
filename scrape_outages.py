@@ -2,20 +2,21 @@
 """
 Delaware Power Outage Scraper
 Fetches outage data from KUBRA Storm Center (Delmarva Power)
-and Delaware Electric Cooperative, outputs GeoJSON.
+and Delaware Electric Cooperative (via PowerOutage.us fallback).
+Outputs GeoJSON to data/outages.geojson
 """
 
 import json
 import sys
 import time
 import os
+import re
 from datetime import datetime, timezone
 from urllib.request import urlopen, Request
 from urllib.error import URLError, HTTPError
+from html.parser import HTMLParser
 
 # --- KUBRA CONFIG (Pepco Holdings / Exelon) ---
-# These are the known Exelon KUBRA endpoints to try.
-# The scraper will auto-discover which view covers Delaware.
 KUBRA_CANDIDATES = [
     {
         "instance_id": "877fd1e9-4162-473f-b782-d8a53a85326b",
@@ -27,9 +28,6 @@ KUBRA_BASE = "https://kubra.io"
 
 # Delaware bounding box for filtering
 DE_BOUNDS = {"min_lat": 38.45, "max_lat": 39.84, "min_lng": -75.79, "max_lng": -75.04}
-
-# --- DEC (Delaware Electric Cooperative) via Siena Tech ---
-DEC_OUTAGE_URL = "https://dec.maps.sienatech.com"
 
 USER_AGENT = "DelawareOutageTracker/1.0 (github; civic-project)"
 HEADERS = {"User-Agent": USER_AGENT, "Accept": "application/json"}
@@ -63,26 +61,6 @@ def fetch_kubra_summary(data_path):
     return fetch_json(url)
 
 
-def fetch_kubra_service_areas(regions_path):
-    """Fetch service area geometry to confirm coverage."""
-    url = f"{KUBRA_BASE}/{regions_path}/serviceareas.json"
-    print(f"Fetching service areas: {url[:80]}...")
-    return fetch_json(url)
-
-
-def quadkey_to_tile(qk):
-    """Convert a quadkey string to (x, y, zoom) tile coordinates."""
-    x, y, z = 0, 0, len(qk)
-    for i, ch in enumerate(qk):
-        mask = 1 << (z - 1 - i)
-        d = int(ch)
-        if d & 1:
-            x |= mask
-        if d & 2:
-            y |= mask
-    return x, y, z
-
-
 def tile_to_quadkey(x, y, z):
     """Convert tile coordinates to a quadkey string."""
     qk = []
@@ -97,21 +75,14 @@ def tile_to_quadkey(x, y, z):
     return "".join(qk)
 
 
-def tile_to_lng_lat(x, y, z):
-    """Convert tile x,y,z to lng,lat of the NW corner."""
-    import math
-    n = 2.0 ** z
-    lng = x / n * 360.0 - 180.0
-    lat = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * y / n))))
-    return lng, lat
-
-
 def get_quadkeys_for_bbox(bbox, zoom):
     """Generate all quadkeys covering a bounding box at a given zoom level."""
     import math
     n = 2 ** zoom
+
     def lng_to_x(lng):
         return int((lng + 180.0) / 360.0 * n)
+
     def lat_to_y(lat):
         lat_rad = math.radians(lat)
         return int((1.0 - math.log(math.tan(lat_rad) + 1.0 / math.cos(lat_rad)) / math.pi) / 2.0 * n)
@@ -139,7 +110,7 @@ def parse_kubra_outage(raw, provider="Delmarva Power"):
     geom = raw.get("geom", {})
     desc = raw.get("desc", {})
 
-    # KUBRA uses [lng, lat] in geom.p or geom.a (polygon)
+    # KUBRA uses [lng, lat] in geom.p
     point = geom.get("p", [None, None])
     if len(point) >= 2:
         lng, lat = point[0], point[1]
@@ -151,15 +122,28 @@ def parse_kubra_outage(raw, provider="Delmarva Power"):
             DE_BOUNDS["min_lng"] <= lng <= DE_BOUNDS["max_lng"]):
         return None
 
-    # Parse fields
-    n_out = desc.get("n_out", desc.get("cust_a", {}).get("val", 0))
+    # Parse fields - handle different KUBRA response formats
+    n_out = desc.get("n_out", 0)
+    if isinstance(n_out, dict):
+        n_out = n_out.get("val", 0)
+    if not isinstance(n_out, int):
+        try:
+            n_out = int(n_out)
+        except (ValueError, TypeError):
+            n_out = 0
+
+    cust_a = desc.get("cust_a", {})
+    if isinstance(cust_a, dict) and n_out == 0:
+        n_out = cust_a.get("val", 0)
+
     cause = desc.get("cause", "Unknown")
+    if not isinstance(cause, str):
+        cause = "Unknown"
     start_time = desc.get("start_time", "")
     etr = desc.get("etr", "")
-    cluster = desc.get("cluster", False)
     inc_id = desc.get("inc_id", "")
 
-    # Build polygon if available
+    # Build geometry
     geom_out = {"type": "Point", "coordinates": [lng, lat]}
     if "a" in geom and geom["a"]:
         try:
@@ -175,10 +159,11 @@ def parse_kubra_outage(raw, provider="Delmarva Power"):
         "properties": {
             "id": inc_id or f"{lng}-{lat}-{start_time}",
             "provider": provider,
-            "customers_affected": n_out if isinstance(n_out, int) else 0,
-            "cause": cause if isinstance(cause, str) else "Unknown",
+            "customers_affected": n_out,
+            "cause": cause,
             "start_time": start_time,
             "etr": etr,
+            "area": "",
             "source": "kubra",
             "scraped_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -186,7 +171,7 @@ def parse_kubra_outage(raw, provider="Delmarva Power"):
 
 
 def scrape_kubra():
-    """Main KUBRA scraping logic with auto-discovery."""
+    """Main KUBRA scraping logic for Delmarva Power."""
     features = []
 
     for candidate in KUBRA_CANDIDATES:
@@ -200,36 +185,32 @@ def scrape_kubra():
             print(f"  Could not fetch state for {label}, skipping.")
             continue
 
-        # Extract data path and regions path
         data_info = state.get("data", {})
         data_path = data_info.get("interval_generation_data", "")
         cluster_template = data_info.get("cluster_interval_generation_data", "")
-
-        datastatic = state.get("datastatic", {})
-        regions_key = list(datastatic.keys())[0] if datastatic else None
-        regions_path = datastatic.get(regions_key, "") if regions_key else ""
 
         if not data_path:
             print(f"  No data path found for {label}, skipping.")
             continue
 
-        # Fetch summary to see total outages
+        # Fetch summary
         summary = fetch_kubra_summary(data_path)
         if summary:
             total = 0
+            areas = []
             if "summaryFileData" in summary:
-                for area in summary["summaryFileData"].get("areas", []):
-                    total += area.get("custs_out", 0)
+                areas = summary["summaryFileData"].get("areas", [])
             elif "file_data" in summary:
-                for area in summary["file_data"].get("areas", []):
-                    total += area.get("custs_out", 0)
+                areas = summary["file_data"].get("areas", [])
+            for area in areas:
+                total += area.get("custs_out", 0)
             print(f"  Summary reports {total} total customers out")
 
         if not cluster_template:
             print(f"  No cluster data template, skipping tile fetch.")
             continue
 
-        # Fetch tiles covering Delaware at zoom levels 8-11
+        # Fetch tiles covering Delaware at multiple zoom levels
         seen_ids = set()
         for zoom in [8, 10, 12]:
             qks = get_quadkeys_for_bbox(DE_BOUNDS, zoom)
@@ -240,7 +221,6 @@ def scrape_kubra():
                 if not tile_data:
                     continue
 
-                # Handle different response formats
                 outages_raw = []
                 if isinstance(tile_data, dict):
                     outages_raw = tile_data.get("outages", tile_data.get("data", []))
@@ -259,10 +239,10 @@ def scrape_kubra():
 
                 time.sleep(0.2)  # be polite
 
-        print(f"  Found {len(features)} outages in Delaware from {label}")
+        print(f"  Found {len(features)} Delmarva outages in Delaware")
 
         if features:
-            break  # found data, no need to try other candidates
+            break
 
     return features
 
@@ -270,47 +250,120 @@ def scrape_kubra():
 def scrape_dec():
     """
     Scrape Delaware Electric Cooperative outage data.
-    DEC uses Siena Tech - we try their known API patterns.
+    DEC uses Siena Tech which has no public API, so we scrape
+    PowerOutage.us as a fallback for county-level DEC data.
     """
     features = []
     print("\nFetching DEC (Delaware Electric Cooperative) data...")
 
-    # Try common Siena Tech API endpoints
-    endpoints = [
-        f"{DEC_OUTAGE_URL}/data/outages.json",
-        f"{DEC_OUTAGE_URL}/api/outages",
-        f"{DEC_OUTAGE_URL}/data/alerts.json",
-    ]
+    # DEC serves Kent and Sussex counties. County centroids for map placement.
+    county_coords = {
+        "Kent": {"lat": 39.10, "lng": -75.50},
+        "Sussex": {"lat": 38.68, "lng": -75.35},
+    }
 
-    for url in endpoints:
-        data = fetch_json(url, retries=1)
-        if data:
-            print(f"  Got DEC data from {url}")
-            outages = data if isinstance(data, list) else data.get("outages", data.get("features", []))
-            for o in outages:
-                # Adapt to whatever structure DEC returns
-                if "geometry" in o:
-                    # Already GeoJSON-like
-                    props = o.get("properties", {})
-                    features.append({
-                        "type": "Feature",
-                        "geometry": o["geometry"],
-                        "properties": {
-                            "id": props.get("id", f"dec-{len(features)}"),
-                            "provider": "DE Electric Co-op",
-                            "customers_affected": props.get("customersAffected", props.get("numOut", 0)),
-                            "cause": props.get("cause", "Unknown"),
-                            "start_time": props.get("startTime", ""),
-                            "etr": props.get("etr", props.get("estimatedRestoration", "")),
-                            "source": "sienatech",
-                            "scraped_at": datetime.now(timezone.utc).isoformat(),
-                        }
-                    })
-            break
+    # Try PowerOutage.us utility page for DEC (utility ID 127)
+    url = "https://poweroutage.us/area/utility/127"
+    try:
+        req = Request(url, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml",
+        })
+        with urlopen(req, timeout=30) as resp:
+            html = resp.read().decode("utf-8")
+
+        print(f"  Got PowerOutage.us DEC page ({len(html)} bytes)")
+
+        # Parse county-level outage data from the page
+        for county, coords in county_coords.items():
+            patterns = [
+                rf'{county}[^<]*?Delaware[^<]*?(\d[\d,]*)\s*$',
+                rf'{county}.*?(\d[\d,]*)\s*customers?\s*without\s*power',
+                rf'{county}[,\s]+Delaware.*?(\d[\d,]+)',
+            ]
+            count = 0
+            for pattern in patterns:
+                match = re.search(pattern, html, re.IGNORECASE | re.DOTALL | re.MULTILINE)
+                if match:
+                    count = int(match.group(1).replace(",", ""))
+                    break
+
+            if count > 0:
+                print(f"  DEC {county} County: {count} customers out")
+                features.append({
+                    "type": "Feature",
+                    "geometry": {
+                        "type": "Point",
+                        "coordinates": [coords["lng"], coords["lat"]]
+                    },
+                    "properties": {
+                        "id": f"dec-{county.lower()}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M')}",
+                        "provider": "DE Electric Co-op",
+                        "customers_affected": count,
+                        "cause": "Unknown",
+                        "start_time": "",
+                        "etr": "",
+                        "area": f"{county} County",
+                        "source": "poweroutage.us",
+                        "scraped_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                })
+
+    except (URLError, HTTPError) as e:
+        print(f"  Could not fetch PowerOutage.us DEC page: {e}")
+
+    # Fallback: try the state page
+    if not features:
+        print("  Trying state page fallback...")
+        try:
+            url2 = "https://poweroutage.us/area/state/delaware"
+            req2 = Request(url2, headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml",
+            })
+            with urlopen(req2, timeout=30) as resp2:
+                html2 = resp2.read().decode("utf-8")
+
+            print(f"  Got state page ({len(html2)} bytes)")
+
+            # Look for DEC total on state page
+            patterns2 = [
+                r'Delaware\s*Electric.*?(\d[\d,]+)\s*(?:customers?\s*out|power\s*outages)',
+                r'Delaware\s*Electric\s*Co[\-\s]*op.*?(\d[\d,]+)',
+            ]
+            for pattern in patterns2:
+                match = re.search(pattern, html2, re.IGNORECASE | re.DOTALL)
+                if match:
+                    count = int(match.group(1).replace(",", ""))
+                    if count > 0:
+                        print(f"  DEC total from state page: {count} customers out")
+                        features.append({
+                            "type": "Feature",
+                            "geometry": {
+                                "type": "Point",
+                                "coordinates": [-75.40, 38.75]
+                            },
+                            "properties": {
+                                "id": f"dec-total-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M')}",
+                                "provider": "DE Electric Co-op",
+                                "customers_affected": count,
+                                "cause": "Unknown",
+                                "start_time": "",
+                                "etr": "",
+                                "area": "DEC Service Area",
+                                "source": "poweroutage.us",
+                                "scraped_at": datetime.now(timezone.utc).isoformat(),
+                            }
+                        })
+                    break
+
+        except (URLError, HTTPError) as e:
+            print(f"  Could not fetch state page: {e}")
 
     if not features:
-        print("  Could not fetch DEC data (Siena Tech endpoints may have changed)")
-        print("  DEC data will be empty - check dec.maps.sienatech.com manually")
+        print("  No DEC outage data found")
+    else:
+        print(f"  Found {len(features)} DEC outage areas")
 
     return features
 
@@ -337,7 +390,7 @@ def main():
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "sources": [
                 {"name": "Delmarva Power", "via": "KUBRA Storm Center", "count": len(kubra_features)},
-                {"name": "DE Electric Co-op", "via": "Siena Tech", "count": len(dec_features)},
+                {"name": "DE Electric Co-op", "via": "PowerOutage.us", "count": len(dec_features)},
             ],
             "total_outages": len(all_features),
             "total_customers_affected": sum(
