@@ -53,7 +53,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 .pp-v{font-weight:600;color:#fff}
 .rbtn{position:absolute;bottom:16px;right:12px;z-index:1000;background:rgba(59,130,246,.2);border:1px solid rgba(59,130,246,.3);color:#60a5fa;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:.75rem;font-weight:600;transition:all .2s;backdrop-filter:blur(10px)}
 .rbtn:hover{background:rgba(59,130,246,.35)}
-.empty{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;text-align:center;background:rgba(15,23,42,.92);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:32px 40px}
+.empty{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;text-align:center;background:rgba(15,23,42,.92);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:32px 40px;display:none}
 .empty h2{font-size:1.1rem;margin-bottom:8px;color:#fff}
 .empty p{font-size:.82rem;color:#94a3b8;line-height:1.6;max-width:340px}
 @media(max-width:640px){.panel{display:none}.hdr h1{font-size:1rem}.st{padding:4px 8px}.st b{font-size:.9rem}}
@@ -89,54 +89,16 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 </div>
 
 <button class="rbtn" onclick="loadData()">↻ Refresh</button>
-
-<div class="empty" id="empty" style="display:none">
+<div class="empty" id="empty">
   <h2>No Active Outages</h2>
   <p>All clear in Delaware! Data refreshes every 5 minutes.</p>
 </div>
 
 <script>
-// ── CONFIG ──
 const API = "https://outagemap-worker.adukes40.workers.dev";
 
-// ── DEC polygon lookup: ref → {lat, lng, name} ──
-const DEC_POLY = {
-  1:{lat:39.173543,lng:-75.474665,name:"19901"},
-  4:{lat:39.177654,lng:-75.596458,name:"19904"},
-  8:{lat:38.736161,lng:-75.611068,name:"19933"},
-  9:{lat:39.082689,lng:-75.630143,name:"19934"},
-  10:{lat:39.258982,lng:-75.699584,name:"19938"},
-  12:{lat:38.554538,lng:-75.242321,name:"19939"},
-  13:{lat:38.478255,lng:-75.564803,name:"19940"},
-  14:{lat:38.792524,lng:-75.425359,name:"19941"},
-  16:{lat:39.006142,lng:-75.605251,name:"19943"},
-  18:{lat:38.506858,lng:-75.210085,name:"19945"},
-  20:{lat:39.028289,lng:-75.452907,name:"19946"},
-  21:{lat:38.672036,lng:-75.395831,name:"19947"},
-  22:{lat:38.819836,lng:-75.596968,name:"19950"},
-  23:{lat:38.69066, lng:-75.250138,name:"19951"},
-  24:{lat:38.913511,lng:-75.625369,name:"19952"},
-  25:{lat:39.153546,lng:-75.696448,name:"19953"},
-  26:{lat:38.900146,lng:-75.520167,name:"19954"},
-  28:{lat:38.547128,lng:-75.541285,name:"19956"},
-  30:{lat:38.73882, lng:-75.175708,name:"19958"},
-  31:{lat:38.85238, lng:-75.404257,name:"19960"},
-  32:{lat:39.069313,lng:-75.490243,name:"19962"},
-  33:{lat:38.93537, lng:-75.380968,name:"19963"},
-  34:{lat:39.093826,lng:-75.722951,name:"19964"},
-  35:{lat:38.574432,lng:-75.296914,name:"19966"},
-  37:{lat:38.54581, lng:-75.119451,name:"19967"},
-  38:{lat:38.775087,lng:-75.28859, name:"19968"},
-  39:{lat:38.556886,lng:-75.10543, name:"19970"},
-  41:{lat:38.713215,lng:-75.109243,name:"19971"},
-  42:{lat:38.638359,lng:-75.613726,name:"19973"},
-  43:{lat:38.468071,lng:-75.193911,name:"19975"},
-  48:{lat:39.296083,lng:-75.562736,name:"19977"},
-  49:{lat:39.047756,lng:-75.574031,name:"19979"},
-};
-
 // ── Google Encoded Polyline decoder ──
-function decodePolyline(enc) {
+function decodePoly(enc) {
   let idx = 0, lat = 0, lng = 0;
   const coords = [];
   while (idx < enc.length) {
@@ -148,25 +110,40 @@ function decodePolyline(enc) {
     lng += (result & 1) ? ~(result >> 1) : result >> 1;
     coords.push([lat / 1e5, lng / 1e5]);
   }
-  return coords;
+  return coords; // [[lat,lng], ...]
 }
 
-// ── MAP SETUP ──
-const map = L.map("map", {zoomControl: false, attributionControl: false}).setView([39.0, -75.5], 9);
-L.control.zoom({position: "bottomleft"}).addTo(map);
-L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-  maxZoom: 19, subdomains: "abcd"
-}).addTo(map);
+// ── Parse Sienatech XML into a map of ref → [{latlngs}] ──
+function parseDecRaw(xmlText) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlText, "text/xml");
+  const polys = doc.querySelectorAll("poly");
+  const out = {};
+  polys.forEach(poly => {
+    const id   = parseInt(poly.getAttribute("id"));
+    const name = poly.getAttribute("name");
+    const rings = poly.querySelectorAll("linearRing");
+    const decoded = [];
+    rings.forEach(ring => {
+      const enc = ring.getAttribute("encoded");
+      if (enc) decoded.push(decodePoly(enc));
+    });
+    out[id] = { name, rings: decoded };
+  });
+  return out;
+}
 
-// Delaware county outlines (simplified)
-const counties = {
-  type:"FeatureCollection",
-  features:[
-    {type:"Feature",properties:{name:"New Castle"},geometry:{type:"Polygon",coordinates:[[[-75.79,39.72],[-75.64,39.84],[-75.41,39.80],[-75.34,39.72],[-75.41,39.56],[-75.51,39.45],[-75.58,39.46],[-75.70,39.51],[-75.76,39.58],[-75.79,39.72]]]}},
-    {type:"Feature",properties:{name:"Kent"},geometry:{type:"Polygon",coordinates:[[[-75.70,39.24],[-75.58,39.46],[-75.51,39.45],[-75.41,39.38],[-75.34,39.26],[-75.32,39.15],[-75.35,39.05],[-75.41,38.97],[-75.52,38.97],[-75.63,39.02],[-75.70,39.10],[-75.70,39.24]]]}},
-    {type:"Feature",properties:{name:"Sussex"},geometry:{type:"Polygon",coordinates:[[[-75.70,39.10],[-75.63,39.02],[-75.52,38.97],[-75.41,38.97],[-75.35,38.90],[-75.30,38.78],[-75.19,38.66],[-75.09,38.55],[-75.05,38.46],[-75.07,38.45],[-75.62,38.45],[-75.69,38.55],[-75.72,38.64],[-75.73,38.75],[-75.74,38.89],[-75.72,39.00],[-75.70,39.10]]]}}
-  ]
-};
+// ── Map setup ──
+const map = L.map("map", {zoomControl:false, attributionControl:false}).setView([39.0,-75.5], 9);
+L.control.zoom({position:"bottomleft"}).addTo(map);
+L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {maxZoom:19, subdomains:"abcd"}).addTo(map);
+
+// County outlines
+const counties = {type:"FeatureCollection",features:[
+  {type:"Feature",properties:{name:"New Castle"},geometry:{type:"Polygon",coordinates:[[[-75.79,39.72],[-75.64,39.84],[-75.41,39.80],[-75.34,39.72],[-75.41,39.56],[-75.51,39.45],[-75.58,39.46],[-75.70,39.51],[-75.76,39.58],[-75.79,39.72]]]}},
+  {type:"Feature",properties:{name:"Kent"},geometry:{type:"Polygon",coordinates:[[[-75.70,39.24],[-75.58,39.46],[-75.51,39.45],[-75.41,39.38],[-75.34,39.26],[-75.32,39.15],[-75.35,39.05],[-75.41,38.97],[-75.52,38.97],[-75.63,39.02],[-75.70,39.10],[-75.70,39.24]]]}},
+  {type:"Feature",properties:{name:"Sussex"},geometry:{type:"Polygon",coordinates:[[[-75.70,39.10],[-75.63,39.02],[-75.52,38.97],[-75.41,38.97],[-75.35,38.90],[-75.30,38.78],[-75.19,38.66],[-75.09,38.55],[-75.05,38.46],[-75.07,38.45],[-75.62,38.45],[-75.69,38.55],[-75.72,38.64],[-75.73,38.75],[-75.74,38.89],[-75.72,39.00],[-75.70,39.10]]]}}
+]};
 const cSty = {color:"rgba(148,163,184,0.25)",weight:1.5,fillColor:"rgba(30,41,59,0.15)",fillOpacity:0.4};
 const cLayer = L.geoJSON(counties, {
   style: () => cSty,
@@ -176,15 +153,15 @@ const cLayer = L.geoJSON(counties, {
   }
 }).addTo(map);
 
-const mGroup = L.layerGroup().addTo(map);
-const aGroup = L.layerGroup().addTo(map);
+const polyGroup   = L.layerGroup().addTo(map); // DEC polygons (bottom)
+const markerGroup = L.layerGroup().addTo(map); // all markers (top)
 
-// ── HELPERS ──
+// ── Helpers ──
 function sev(n) {
-  if (n > 2000) return {c:"#ef4444",l:"Critical"};
-  if (n > 500)  return {c:"#f87171",l:"High"};
-  if (n > 100)  return {c:"#fbbf24",l:"Medium"};
-  return {c:"#34d399",l:"Low"};
+  if (n > 2000) return {c:"#ef4444", fill:"rgba(239,68,68,0.22)", l:"Critical"};
+  if (n > 500)  return {c:"#f87171", fill:"rgba(248,113,113,0.18)", l:"High"};
+  if (n > 100)  return {c:"#fbbf24", fill:"rgba(251,191,36,0.16)", l:"Medium"};
+  return           {c:"#34d399", fill:"rgba(52,211,153,0.14)", l:"Low"};
 }
 function fmt(iso) {
   if (!iso || iso === "ETR-NULL") return "Assessing";
@@ -193,150 +170,176 @@ function fmt(iso) {
 }
 function elapsed(iso) {
   if (!iso) return "";
-  const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  const m = Math.floor((Date.now()-new Date(iso).getTime())/60000);
   if (m < 0) return "";
-  if (m < 60) return m + "m ago";
-  return Math.floor(m/60) + "h " + (m%60) + "m ago";
+  return m < 60 ? m+"m ago" : Math.floor(m/60)+"h "+(m%60)+"m ago";
+}
+function centroid(latlngs) {
+  const lat = latlngs.reduce((s,c)=>s+c[0],0)/latlngs.length;
+  const lng = latlngs.reduce((s,c)=>s+c[1],0)/latlngs.length;
+  return [lat, lng];
 }
 
-// ── PLACE MARKER ──
-function placeMarker(lat, lng, n, provider, id, cause, start_time, etr) {
-  const s = sev(n);
-  const isDec = provider === "DEC";
-  const pColor = isDec ? "#a855f7" : "#3b82f6";
-  const pClass = isDec ? "prov-e" : "prov-d";
-  const pName  = isDec ? "DE Electric Co-op" : "Delmarva Power";
-
-  L.circle([lat, lng], {
-    radius: Math.min(Math.max(n * 3, 400), 8000),
-    color: s.c, fillColor: s.c, fillOpacity: 0.07, weight: 0.5, opacity: 0.3
-  }).addTo(aGroup);
-
-  const marker = L.circleMarker([lat, lng], {
-    radius: Math.min(Math.max(7, n / 70), 26),
-    color: pColor, fillColor: s.c, fillOpacity: 0.85, weight: 2.5, opacity: 0.9
-  }).addTo(mGroup);
-
-  marker.bindPopup(`
-    <div class="pp-t">${pName} Outage</div>
-    <span class="pp-p ${pClass}">${pName}</span>
-    <div class="pp-r"><span class="pp-l">Customers</span><span class="pp-v" style="color:${s.c}">${n.toLocaleString()}</span></div>
-    <div class="pp-r"><span class="pp-l">Severity</span><span class="pp-v">${s.l}</span></div>
-    <div class="pp-r"><span class="pp-l">Cause</span><span class="pp-v">${cause || "Unknown"}</span></div>
-    <div class="pp-r"><span class="pp-l">Started</span><span class="pp-v">${fmt(start_time)} ${elapsed(start_time)}</span></div>
-    <div class="pp-r"><span class="pp-l">Est. Restore</span><span class="pp-v">${fmt(etr)}</span></div>
-    <div class="pp-r"><span class="pp-l">ID</span><span class="pp-v" style="font-size:.7rem;color:#64748b">${id || "—"}</span></div>
-  `, {maxWidth: 280});
-
-  return {lat, lng, n, provider, pName, cause, start_time, etr, s};
-}
-
-// ── LOAD DATA ──
+// ── Main load ──
 async function loadData() {
   const badge = document.getElementById("badge");
   badge.textContent = "LOADING..."; badge.className = "badge b-stale";
-  mGroup.clearLayers(); aGroup.clearLayers();
+  polyGroup.clearLayers(); markerGroup.clearLayers();
 
   try {
-    // Fetch all 3 endpoints in parallel
-    const [dplSummary, dplDetail, decOutages] = await Promise.all([
-      fetch(`${API}/delmarva/outages`).then(r => r.json()),
-      fetch(`${API}/delmarva/detail`).then(r => r.json()),
-      fetch(`${API}/dec/outages?tiles=1,0`).then(r => r.json()),
+    // Fetch all 4 endpoints in parallel — dec/raw returns XML
+    const [dplSummaryRes, dplDetailRes, decOutagesRes, decRawRes] = await Promise.all([
+      fetch(`${API}/delmarva/outages`),
+      fetch(`${API}/delmarva/detail`),
+      fetch(`${API}/dec/outages?tiles=1,0`),
+      fetch(`${API}/dec/raw?tiles=1,0`),
     ]);
 
+    const dplSummary = await dplSummaryRes.json();
+    const dplDetail  = await dplDetailRes.json();
+    const decOutages = await decOutagesRes.json();
+    const decRawXml  = await decRawRes.text();
+
+    console.log("dplSummary:", JSON.stringify(dplSummary).slice(0,300));
+    console.log("dplDetail:",  JSON.stringify(dplDetail).slice(0,300));
+    console.log("decOutages:", JSON.stringify(decOutages).slice(0,300));
+
+    // Parse DEC polygon geometry
+    const decPolygons = parseDecRaw(decRawXml);
+
     const allItems = [];
-    const now = new Date().toISOString();
 
-    // Debug: log raw responses to console so we can inspect structure
-    console.log("=== /delmarva/outages ===", JSON.stringify(dplSummary).slice(0, 500));
-    console.log("=== /delmarva/detail ===",  JSON.stringify(dplDetail).slice(0, 500));
-    console.log("=== /dec/outages ===",       JSON.stringify(decOutages).slice(0, 500));
+    // ── DEC: draw real polygons ──
+    const decList = Array.isArray(decOutages) ? decOutages : [];
+    for (const o of decList) {
+      const n    = o.affected || 0;
+      const poly = decPolygons[o.ref];
+      if (!poly || !poly.rings.length || !n) continue;
 
-    // ── Delmarva (Kubra) ──
-    // Handle both {outages:[...]} wrapper and bare array
-    const dplOutages = dplDetail?.outages ?? (Array.isArray(dplDetail) ? dplDetail : []);
-    for (const o of dplOutages) {
-      // cust_a.val is customers affected; n_out is number of separate outages in cluster
-      const n = o.desc?.cust_a?.val ?? o.desc?.n_out ?? 0;
-      if (!n) continue;
-      // geom.p is an array of encoded polyline strings; first point is the location
-      const enc = o.geom?.p?.[0];
-      if (!enc) continue;
-      const coords = decodePolyline(enc);
-      if (!coords.length) continue;
-      const [lat, lng] = coords[0];
-      const etr = (!o.desc?.etr || o.desc.etr === "ETR-NULL") ? null : o.desc.etr;
-      const item = placeMarker(lat, lng, n, "Delmarva", o.id, o.desc?.cause, o.desc?.start_time, etr);
-      allItems.push(item);
+      const s = sev(n);
+
+      // Build Leaflet polygon — rings[0] = outer, rings[1+] = holes
+      const outerRing = poly.rings[0];
+      const holeRings = poly.rings.slice(1);
+
+      const lPoly = L.polygon(
+        holeRings.length ? [outerRing, ...holeRings] : outerRing,
+        {
+          color: "#a855f7",
+          weight: 1.5,
+          opacity: 0.8,
+          fillColor: s.c,
+          fillOpacity: 0.25,
+          className: "dec-poly"
+        }
+      ).addTo(polyGroup);
+
+      const [cLat, cLng] = centroid(outerRing);
+      const popupHtml = `
+        <div class="pp-t">DE Electric Co-op — ZIP ${poly.name}</div>
+        <span class="pp-p prov-e">DE Electric Co-op</span>
+        <div class="pp-r"><span class="pp-l">Customers Affected</span><span class="pp-v" style="color:${s.c}">${n.toLocaleString()}</span></div>
+        <div class="pp-r"><span class="pp-l">Severity</span><span class="pp-v">${s.l}</span></div>
+        <div class="pp-r"><span class="pp-l">ZIP Code</span><span class="pp-v">${poly.name}</span></div>
+      `;
+      lPoly.bindPopup(popupHtml, {maxWidth:280});
+      lPoly.on("mouseover", function() { this.setStyle({fillOpacity:0.45, weight:2.5}); });
+      lPoly.on("mouseout",  function() { this.setStyle({fillOpacity:0.25, weight:1.5}); });
+
+      // Center marker
+      const marker = L.circleMarker([cLat, cLng], {
+        radius: Math.min(Math.max(7, n/120), 22),
+        color: "#a855f7", fillColor: s.c, fillOpacity: 0.9, weight: 2, opacity: 0.9
+      }).addTo(markerGroup);
+      marker.bindPopup(popupHtml, {maxWidth:280});
+
+      allItems.push({lat:cLat, lng:cLng, n, provider:"DEC", pName:"DE Electric Co-op", zip:poly.name, s});
     }
 
-    // ── DEC (Sienatech) ──
-    // Response may be bare array or wrapped
-    const decList = Array.isArray(decOutages)
-      ? decOutages
-      : (Array.isArray(decOutages?.data) ? decOutages.data : []);
-    for (const o of decList) {
-      const poly = DEC_POLY[o.ref];
-      if (!poly) { console.warn("DEC: no polygon for ref", o.ref); continue; }
-      const n = o.affected || 0;
+    // ── Delmarva (Kubra) ──
+    const dplOutages = dplDetail?.outages ?? (Array.isArray(dplDetail) ? dplDetail : []);
+    for (const o of dplOutages) {
+      const n = o.desc?.cust_a?.val ?? o.desc?.n_out ?? 0;
       if (!n) continue;
-      const item = placeMarker(poly.lat, poly.lng, n, "DEC", `dec-${o.ref}`, null, null, null);
-      item.zip = poly.name;
-      allItems.push(item);
+      const enc = o.geom?.p?.[0];
+      if (!enc) continue;
+      const coords = decodePoly(enc);
+      if (!coords.length) continue;
+      const [lat, lng] = coords[0];
+      const s = sev(n);
+      const etr = (!o.desc?.etr || o.desc.etr === "ETR-NULL") ? null : o.desc.etr;
+
+      // Glow ring
+      L.circle([lat,lng], {
+        radius: Math.min(Math.max(n*3, 400), 8000),
+        color: s.c, fillColor: s.c, fillOpacity: 0.06, weight: 0.5, opacity: 0.25
+      }).addTo(polyGroup);
+
+      const marker = L.circleMarker([lat,lng], {
+        radius: Math.min(Math.max(7, n/70), 26),
+        color: "#3b82f6", fillColor: s.c, fillOpacity: 0.85, weight: 2.5, opacity: 0.9
+      }).addTo(markerGroup);
+
+      marker.bindPopup(`
+        <div class="pp-t">Delmarva Power Outage</div>
+        <span class="pp-p prov-d">Delmarva Power</span>
+        <div class="pp-r"><span class="pp-l">Customers</span><span class="pp-v" style="color:${s.c}">${n.toLocaleString()}</span></div>
+        <div class="pp-r"><span class="pp-l">Severity</span><span class="pp-v">${s.l}</span></div>
+        <div class="pp-r"><span class="pp-l">Cause</span><span class="pp-v">${o.desc?.cause||"Unknown"}</span></div>
+        <div class="pp-r"><span class="pp-l">Started</span><span class="pp-v">${fmt(o.desc?.start_time)} ${elapsed(o.desc?.start_time)}</span></div>
+        <div class="pp-r"><span class="pp-l">Est. Restore</span><span class="pp-v">${fmt(etr)}</span></div>
+        <div class="pp-r"><span class="pp-l">ID</span><span class="pp-v" style="font-size:.7rem;color:#64748b">${o.id||"—"}</span></div>
+      `, {maxWidth:280});
+
+      allItems.push({lat, lng, n, provider:"Delmarva", pName:"Delmarva Power", cause:o.desc?.cause, start_time:o.desc?.start_time, etr, s});
     }
 
     // ── Stats ──
-    // dplSummary structure: {summaryFileData:{totals:[{total_cust_a:{val:N}, total_outages:N}]}}
-    const totals = dplSummary?.summaryFileData?.totals?.[0]
-                ?? dplSummary?.totals?.[0]; // fallback if wrapper differs
-    const dplCust = totals?.total_cust_a?.val ?? 0;
-    const dplOutageCount = totals?.total_outages ?? dplOutages.length;
-    const decCust  = decList.reduce((s, o) => s + (o.affected || 0), 0);
-    const decCount = decList.filter(o => o.affected > 0).length;
+    const totals = dplSummary?.summaryFileData?.totals?.[0] ?? dplSummary?.totals?.[0];
+    const dplCust  = totals?.total_cust_a?.val ?? 0;
+    const dplCount = totals?.total_outages ?? dplOutages.length;
+    const decCust  = decList.reduce((s,o)=>s+(o.affected||0),0);
+    const decCount = decList.filter(o=>o.affected>0).length;
 
-    document.getElementById("s-out").textContent  = (dplOutageCount + decCount).toLocaleString();
+    document.getElementById("s-out").textContent  = (dplCount + decCount).toLocaleString();
     document.getElementById("s-cust").textContent = (dplCust + decCust).toLocaleString();
     document.getElementById("s-dpl").textContent  = dplCust.toLocaleString();
     document.getElementById("s-dec").textContent  = decCust.toLocaleString();
 
-    const genAt = dplSummary?.summaryFileData?.date_generated || now;
-    const age = Math.floor((Date.now() - new Date(genAt).getTime()) / 60000);
-    document.getElementById("ts").textContent = "Data from " + fmt(genAt) + " (" + (age < 60 ? age+"m ago" : Math.floor(age/60)+"h ago") + ")";
+    const genAt = dplSummary?.summaryFileData?.date_generated || new Date().toISOString();
+    const age   = Math.floor((Date.now()-new Date(genAt).getTime())/60000);
+    document.getElementById("ts").textContent = "Data from " + fmt(genAt) + " (" + (age<60?age+"m ago":Math.floor(age/60)+"h ago") + ")";
     badge.textContent = age < 30 ? "LIVE" : "STALE";
     badge.className   = age < 30 ? "badge b-live" : "badge b-stale";
 
-    // ── Empty state ──
     document.getElementById("empty").style.display = allItems.length === 0 ? "block" : "none";
 
     // ── Side panel ──
-    const sorted = [...allItems].sort((a, b) => b.n - a.n);
-    document.getElementById("panel").innerHTML = sorted.slice(0, 20).map(p => {
+    const sorted = [...allItems].sort((a,b)=>b.n-a.n);
+    document.getElementById("panel").innerHTML = sorted.slice(0,25).map(p => {
       const isDec = p.provider === "DEC";
-      return `<div class="card" onclick="map.flyTo([${p.lat},${p.lng}],13)">
+      return `<div class="card" onclick="map.flyTo([${p.lat},${p.lng}],12)">
         <div class="card-top">
           <span class="prov ${isDec?'prov-e':'prov-d'}">${p.pName}</span>
           <span class="card-n" style="color:${p.s.c}">${p.n.toLocaleString()}</span>
         </div>
-        <div class="card-r"><span class="l">ZIP</span><span class="v">${p.zip || '—'}</span></div>
-        <div class="card-r"><span class="l">Cause</span><span class="v">${p.cause||'Unknown'}</span></div>
+        ${isDec ? `<div class="card-r"><span class="l">ZIP</span><span class="v">${p.zip}</span></div>` : ''}
+        <div class="card-r"><span class="l">Cause</span><span class="v">${p.cause||'—'}</span></div>
         <div class="card-r"><span class="l">Since</span><span class="v">${fmt(p.start_time)}</span></div>
         <div class="card-r"><span class="l">ETA</span><span class="v">${fmt(p.etr)}</span></div>
       </div>`;
     }).join("");
 
-  } catch (e) {
-    console.error("Failed to load outage data:", e);
-    badge.textContent = "ERROR"; badge.className = "badge b-err";
-    document.getElementById("ts").textContent = "Could not reach the API worker. Check console for details.";
-    document.getElementById("empty").style.display = "block";
-    document.querySelector("#empty h2").textContent = "Data Not Available";
-    document.querySelector("#empty p").textContent = e.message || "Unknown error. Check the browser console.";
+  } catch(e) {
+    console.error("Load failed:", e);
+    document.getElementById("badge").textContent = "ERROR";
+    document.getElementById("badge").className = "badge b-err";
+    document.getElementById("ts").textContent = e.message || "Unknown error. Check console.";
   }
 }
 
 loadData();
-setInterval(loadData, 5 * 60 * 1000);
+setInterval(loadData, 5*60*1000);
 </script>
 </body>
 </html>
