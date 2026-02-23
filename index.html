@@ -226,10 +226,10 @@ async function loadData() {
         holeRings.length ? [outerRing, ...holeRings] : outerRing,
         {
           color: "#a855f7",
-          weight: 1.5,
-          opacity: 0.8,
+          weight: 2.5,
+          opacity: 1,
           fillColor: s.c,
-          fillOpacity: 0.25,
+          fillOpacity: 0.45,
           className: "dec-poly"
         }
       ).addTo(polyGroup);
@@ -243,15 +243,10 @@ async function loadData() {
         <div class="pp-r"><span class="pp-l">ZIP Code</span><span class="pp-v">${poly.name}</span></div>
       `;
       lPoly.bindPopup(popupHtml, {maxWidth:280});
-      lPoly.on("mouseover", function() { this.setStyle({fillOpacity:0.45, weight:2.5}); });
-      lPoly.on("mouseout",  function() { this.setStyle({fillOpacity:0.25, weight:1.5}); });
+      lPoly.on("mouseover", function() { this.setStyle({fillOpacity:0.65, weight:3}); });
+      lPoly.on("mouseout",  function() { this.setStyle({fillOpacity:0.45, weight:2.5}); });
 
-      // Center marker
-      const marker = L.circleMarker([cLat, cLng], {
-        radius: Math.min(Math.max(7, n/120), 22),
-        color: "#a855f7", fillColor: s.c, fillOpacity: 0.9, weight: 2, opacity: 0.9
-      }).addTo(markerGroup);
-      marker.bindPopup(popupHtml, {maxWidth:280});
+
 
       allItems.push({lat:cLat, lng:cLng, n, provider:"DEC", pName:"DE Electric Co-op", zip:poly.name, s});
     }
