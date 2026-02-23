@@ -1,299 +1,268 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Delaware Power Outage Map</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0a0e1a;color:#e0e6f0;overflow:hidden;height:100vh}
-#map{width:100%;height:100vh}
-
-/* Header */
-.hdr{position:absolute;top:0;left:0;right:0;z-index:1000;background:linear-gradient(180deg,rgba(10,14,26,.97),rgba(10,14,26,.85) 80%,transparent);padding:12px 16px 22px;pointer-events:none}
-.hdr>*{pointer-events:auto}
-.hdr h1{font-size:1.2rem;font-weight:700;background:linear-gradient(135deg,#60a5fa,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;display:inline}
-.badge{font-size:.6rem;padding:2px 7px;border-radius:20px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;vertical-align:middle;margin-left:8px}
-.b-live{background:rgba(52,211,153,.15);color:#34d399;border:1px solid rgba(52,211,153,.3);animation:pulse 2s infinite}
-.b-stale{background:rgba(251,191,36,.15);color:#fbbf24;border:1px solid rgba(251,191,36,.3)}
-.b-err{background:rgba(248,113,113,.15);color:#f87171;border:1px solid rgba(248,113,113,.3)}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.6}}
-.stats{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
-.st{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:5px 12px;display:flex;align-items:center;gap:6px}
-.st b{font-size:1.1rem;color:#fff}
-.st span{font-size:.65rem;color:#94a3b8;text-transform:uppercase}
-.ts{font-size:.65rem;color:#64748b;margin-top:6px}
-
-/* Side panel */
-.panel{position:absolute;top:88px;right:12px;z-index:1000;width:320px;max-height:calc(100vh - 100px);overflow-y:auto;display:flex;flex-direction:column;gap:6px}
-.panel::-webkit-scrollbar{width:3px}
-.panel::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:3px}
-.card{background:rgba(15,23,42,.92);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:12px;cursor:pointer;transition:all .2s}
-.card:hover{border-color:rgba(96,165,250,.4);transform:translateY(-1px)}
-.card-top{display:flex;justify-content:space-between;align-items:start;margin-bottom:6px}
-.prov{font-size:.6rem;padding:2px 7px;border-radius:5px;font-weight:600}
-.prov-d{background:rgba(59,130,246,.2);color:#60a5fa}
-.prov-e{background:rgba(168,85,247,.2);color:#c084fc}
-.card-n{font-size:1.2rem;font-weight:800;color:#fff}
-.card-r{display:flex;justify-content:space-between;font-size:.72rem;padding:2px 0}
-.card-r .l{color:#64748b}
-.card-r .v{color:#cbd5e1;font-weight:500}
-
-/* Legend */
-.legend{position:absolute;bottom:16px;left:12px;z-index:1000;background:rgba(15,23,42,.92);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.08);border-radius:10px;padding:12px 16px;font-size:.75rem}
-.legend h3{font-size:.65rem;color:#94a3b8;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px}
-.lg-i{display:flex;align-items:center;gap:7px;margin-bottom:4px;color:#cbd5e1}
-.lg-d{width:12px;height:12px;border-radius:50%;flex-shrink:0}
-.lg-p{display:flex;align-items:center;gap:7px;margin-top:8px;padding-top:6px;border-top:1px solid rgba(255,255,255,.07);color:#cbd5e1}
-.lg-l{width:12px;height:3px;border-radius:2px;flex-shrink:0}
-
-/* Popups */
-.leaflet-popup-content-wrapper{background:rgba(15,23,42,.95)!important;border:1px solid rgba(255,255,255,.1)!important;border-radius:10px!important;color:#e0e6f0!important}
-.leaflet-popup-tip{background:rgba(15,23,42,.95)!important}
-.leaflet-popup-content{margin:10px 14px!important;font-size:.82rem;line-height:1.6}
-.pp-t{font-weight:700;font-size:.95rem;margin-bottom:4px}
-.pp-p{font-size:.65rem;padding:2px 7px;border-radius:5px;font-weight:600;display:inline-block;margin-bottom:6px}
-.pp-r{display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid rgba(255,255,255,.05)}
-.pp-r:last-child{border:none}
-.pp-l{color:#64748b}
-.pp-v{font-weight:600;color:#fff}
-
-/* Refresh */
-.rbtn{position:absolute;bottom:16px;right:12px;z-index:1000;background:rgba(59,130,246,.2);border:1px solid rgba(59,130,246,.3);color:#60a5fa;padding:8px 14px;border-radius:8px;cursor:pointer;font-size:.75rem;font-weight:600;transition:all .2s;backdrop-filter:blur(10px)}
-.rbtn:hover{background:rgba(59,130,246,.35)}
-
-/* Empty state */
-.empty{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:1000;text-align:center;background:rgba(15,23,42,.92);backdrop-filter:blur(14px);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:32px 40px}
-.empty h2{font-size:1.1rem;margin-bottom:8px;color:#fff}
-.empty p{font-size:.82rem;color:#94a3b8;line-height:1.6;max-width:340px}
-
-/* Mobile */
-@media(max-width:640px){
-  .panel{display:none}
-  .hdr h1{font-size:1rem}
-  .st{padding:4px 8px}
-  .st b{font-size:.9rem}
-}
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Delaware Outage Map</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0f172a; color: #f1f5f9; font-family: system-ui, sans-serif; min-height: 100vh; padding: 16px; }
+    button { font-family: inherit; cursor: pointer; }
+  </style>
 </head>
 <body>
-<div id="map"></div>
-
-<div class="hdr">
-  <div>
-    <h1>⚡ Delaware Power Outages</h1>
-    <span id="badge" class="badge b-err">Loading...</span>
-  </div>
-  <div class="stats">
-    <div class="st"><b id="s-out">-</b><span>Outages</span></div>
-    <div class="st"><b id="s-cust">-</b><span>Customers</span></div>
-    <div class="st"><b id="s-dpl">-</b><span>Delmarva</span></div>
-    <div class="st"><b id="s-dec">-</b><span>DEC</span></div>
-  </div>
-  <div class="ts" id="ts"></div>
-</div>
-
-<div class="panel" id="panel"></div>
-
-<div class="legend">
-  <h3>Severity</h3>
-  <div class="lg-i"><div class="lg-d" style="background:#34d399"></div>1–100 customers</div>
-  <div class="lg-i"><div class="lg-d" style="background:#fbbf24"></div>101–500</div>
-  <div class="lg-i"><div class="lg-d" style="background:#f87171"></div>501–2,000</div>
-  <div class="lg-i"><div class="lg-d" style="background:#ef4444;box-shadow:0 0 6px rgba(239,68,68,.5)"></div>2,000+</div>
-  <div class="lg-p"><div class="lg-l" style="background:#3b82f6"></div>Delmarva Power</div>
-  <div class="lg-p"><div class="lg-l" style="background:#a855f7"></div>DE Electric Co-op</div>
-</div>
-
-<button class="rbtn" onclick="loadData()">↻ Refresh</button>
-
-<div class="empty" id="empty" style="display:none">
-  <h2>No Active Outages</h2>
-  <p>All clear in Delaware! The scraper last ran at the time shown above. Data refreshes every 15 minutes.</p>
-</div>
-
+<div id="root"></div>
 <script>
-// ── CONFIG ──
-// UPDATE THIS to your GitHub username/repo:
-const REPO = "adukes40/OutageMap";
-const DATA_URL = `https://raw.githubusercontent.com/${REPO}/main/data/outages.geojson`;
+const { useState, useEffect, useCallback, useRef } = React;
 
-// ── MAP SETUP ──
-const map = L.map("map", {zoomControl: false, attributionControl: false}).setView([39.0, -75.5], 9);
-L.control.zoom({position: "bottomleft"}).addTo(map);
-L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-  maxZoom: 19, subdomains: "abcd"
-}).addTo(map);
-
-// Delaware counties (simplified)
-const counties = {
-  type: "FeatureCollection",
-  features: [
-    {type:"Feature",properties:{name:"New Castle"},geometry:{type:"Polygon",coordinates:[[[-75.79,39.72],[-75.64,39.84],[-75.41,39.80],[-75.34,39.72],[-75.41,39.56],[-75.51,39.45],[-75.58,39.46],[-75.70,39.51],[-75.76,39.58],[-75.79,39.72]]]}},
-    {type:"Feature",properties:{name:"Kent"},geometry:{type:"Polygon",coordinates:[[[-75.70,39.24],[-75.58,39.46],[-75.51,39.45],[-75.41,39.38],[-75.34,39.26],[-75.32,39.15],[-75.35,39.05],[-75.41,38.97],[-75.52,38.97],[-75.63,39.02],[-75.70,39.10],[-75.70,39.24]]]}},
-    {type:"Feature",properties:{name:"Sussex"},geometry:{type:"Polygon",coordinates:[[[-75.70,39.10],[-75.63,39.02],[-75.52,38.97],[-75.41,38.97],[-75.35,38.90],[-75.30,38.78],[-75.19,38.66],[-75.09,38.55],[-75.05,38.46],[-75.07,38.45],[-75.62,38.45],[-75.69,38.55],[-75.72,38.64],[-75.73,38.75],[-75.74,38.89],[-75.72,39.00],[-75.70,39.10]]]}}
-  ]
+const API = "https://outagemap-worker.adukes40.workers.dev";
+const POLL_MS = 60000;
+const W = 520, H = 640;
+const DE_BOUNDS = { minLat: 38.3, maxLat: 39.85, minLng: -75.85, maxLng: -74.9 };
+const SOURCES = {
+  delmarva: { label: "Delmarva Power",         color: "#f97316" },
+  dec:      { label: "Delaware Electric Coop", color: "#3b82f6" },
 };
-const cSty = {color:"rgba(148,163,184,0.25)",weight:1.5,fillColor:"rgba(30,41,59,0.15)",fillOpacity:0.4};
-const cLayer = L.geoJSON(counties, {
-  style: () => cSty,
-  onEachFeature: (f, ly) => {
-    ly.on("mouseover", () => { ly.setStyle({color:"rgba(96,165,250,0.4)",weight:2,fillColor:"rgba(30,58,138,0.25)",fillOpacity:0.5}); ly.bindTooltip(f.properties.name+" County",{sticky:true}).openTooltip(); });
-    ly.on("mouseout", () => { cLayer.resetStyle(ly); ly.closeTooltip(); });
+
+const DEC_POLY = {
+  1:{lat:39.173543,lng:-75.474665,name:"19901"},4:{lat:39.177654,lng:-75.596458,name:"19904"},
+  8:{lat:38.736161,lng:-75.611068,name:"19933"},9:{lat:39.082689,lng:-75.630143,name:"19934"},
+  10:{lat:39.258982,lng:-75.699584,name:"19938"},12:{lat:38.554538,lng:-75.242321,name:"19939"},
+  13:{lat:38.478255,lng:-75.564803,name:"19940"},14:{lat:38.792524,lng:-75.425359,name:"19941"},
+  16:{lat:39.006142,lng:-75.605251,name:"19943"},18:{lat:38.506858,lng:-75.210085,name:"19945"},
+  20:{lat:39.028289,lng:-75.452907,name:"19946"},21:{lat:38.672036,lng:-75.395831,name:"19947"},
+  22:{lat:38.819836,lng:-75.596968,name:"19950"},23:{lat:38.69066,lng:-75.250138,name:"19951"},
+  24:{lat:38.913511,lng:-75.625369,name:"19952"},25:{lat:39.153546,lng:-75.696448,name:"19953"},
+  26:{lat:38.900146,lng:-75.520167,name:"19954"},28:{lat:38.547128,lng:-75.541285,name:"19956"},
+  30:{lat:38.73882,lng:-75.175708,name:"19958"},31:{lat:38.85238,lng:-75.404257,name:"19960"},
+  32:{lat:39.069313,lng:-75.490243,name:"19962"},33:{lat:38.93537,lng:-75.380968,name:"19963"},
+  34:{lat:39.093826,lng:-75.722951,name:"19964"},35:{lat:38.574432,lng:-75.296914,name:"19966"},
+  37:{lat:38.54581,lng:-75.119451,name:"19967"},38:{lat:38.775087,lng:-75.28859,name:"19968"},
+  39:{lat:38.556886,lng:-75.10543,name:"19970"},41:{lat:38.713215,lng:-75.109243,name:"19971"},
+  42:{lat:38.638359,lng:-75.613726,name:"19973"},43:{lat:38.468071,lng:-75.193911,name:"19975"},
+  48:{lat:39.296083,lng:-75.562736,name:"19977"},49:{lat:39.047756,lng:-75.574031,name:"19979"},
+};
+
+function decodePolyline(encoded) {
+  let idx = 0, lat = 0, lng = 0;
+  const coords = [];
+  while (idx < encoded.length) {
+    let b, shift = 0, result = 0;
+    do { b = encoded.charCodeAt(idx++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lat += (result & 1) ? ~(result >> 1) : result >> 1;
+    shift = 0; result = 0;
+    do { b = encoded.charCodeAt(idx++) - 63; result |= (b & 0x1f) << shift; shift += 5; } while (b >= 0x20);
+    lng += (result & 1) ? ~(result >> 1) : result >> 1;
+    coords.push([lat / 1e5, lng / 1e5]);
   }
-}).addTo(map);
-
-let mGroup = L.layerGroup().addTo(map);
-let aGroup = L.layerGroup().addTo(map);
-
-// ── HELPERS ──
-function sev(n) {
-  if (n > 2000) return {c:"#ef4444",l:"Critical"};
-  if (n > 500) return {c:"#f87171",l:"High"};
-  if (n > 100) return {c:"#fbbf24",l:"Medium"};
-  return {c:"#34d399",l:"Low"};
-}
-function fmt(iso) {
-  if (!iso) return "N/A";
-  try { return new Date(iso).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}); }
-  catch { return iso; }
-}
-function elapsed(iso) {
-  if (!iso) return "";
-  const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
-  if (m < 0) return "";
-  if (m < 60) return m + "m ago";
-  return Math.floor(m/60) + "h " + (m%60) + "m ago";
+  return coords;
 }
 
-// ── RENDER ──
-function render(geojson) {
-  mGroup.clearLayers();
-  aGroup.clearLayers();
-
-  const feats = geojson.features || [];
-  const meta = geojson.metadata || {};
-
-  // Stats
-  let nDpl = 0, nDec = 0, totCust = 0;
-  feats.forEach(f => {
-    const p = f.properties;
-    const n = p.customers_affected || 0;
-    totCust += n;
-    if (p.provider && p.provider.includes("Co-op")) nDec++; else nDpl++;
-  });
-
-  document.getElementById("s-out").textContent = feats.length;
-  document.getElementById("s-cust").textContent = totCust.toLocaleString();
-  document.getElementById("s-dpl").textContent = nDpl;
-  document.getElementById("s-dec").textContent = nDec;
-
-  const genAt = meta.generated_at;
-  if (genAt) {
-    const age = Math.floor((Date.now() - new Date(genAt).getTime()) / 60000);
-    document.getElementById("ts").textContent = "Data from " + fmt(genAt) + " (" + (age < 60 ? age+"m ago" : Math.floor(age/60)+"h ago") + ")";
-    const b = document.getElementById("badge");
-    if (age < 30) { b.textContent = "LIVE"; b.className = "badge b-live"; }
-    else { b.textContent = "STALE " + Math.floor(age/60) + "h"; b.className = "badge b-stale"; }
-  }
-
-  // Empty state
-  document.getElementById("empty").style.display = feats.length === 0 ? "block" : "none";
-
-  // Markers
-  feats.forEach(f => {
-    const p = f.properties;
-    const n = p.customers_affected || 0;
-    const s = sev(n);
-    const g = f.geometry;
-    let lat, lng;
-
-    if (g.type === "Point") {
-      lng = g.coordinates[0]; lat = g.coordinates[1];
-    } else if (g.type === "Polygon") {
-      // Centroid approximation
-      const cs = g.coordinates[0];
-      lat = cs.reduce((a,c) => a+c[1], 0) / cs.length;
-      lng = cs.reduce((a,c) => a+c[0], 0) / cs.length;
-      // Draw polygon
-      L.geoJSON(g, {style:{color:s.c,fillColor:s.c,fillOpacity:0.15,weight:1.5}}).addTo(aGroup);
-    } else return;
-
-    // Glow circle
-    L.circle([lat, lng], {radius: Math.min(Math.max(n * 3, 400), 8000), color: s.c, fillColor: s.c, fillOpacity: 0.07, weight: 0.5, opacity: 0.3}).addTo(aGroup);
-
-    const isDec = p.provider && p.provider.includes("Co-op");
-    const pColor = isDec ? "#a855f7" : "#3b82f6";
-    const pClass = isDec ? "prov-e" : "prov-d";
-    const pName = isDec ? "DE Electric Co-op" : "Delmarva Power";
-
-    const marker = L.circleMarker([lat, lng], {
-      radius: Math.min(Math.max(7, n / 70), 26),
-      color: pColor, fillColor: s.c, fillOpacity: 0.85, weight: 2.5, opacity: 0.9
-    }).addTo(mGroup);
-
-    marker.bindPopup(`
-      <div class="pp-t">${pName} Outage</div>
-      <span class="pp-p ${pClass}">${pName}</span>
-      <div class="pp-r"><span class="pp-l">Customers</span><span class="pp-v" style="color:${s.c}">${n.toLocaleString()}</span></div>
-      <div class="pp-r"><span class="pp-l">Severity</span><span class="pp-v">${s.l}</span></div>
-      <div class="pp-r"><span class="pp-l">Cause</span><span class="pp-v">${p.cause || "Unknown"}</span></div>
-      <div class="pp-r"><span class="pp-l">Started</span><span class="pp-v">${fmt(p.start_time)} ${elapsed(p.start_time)}</span></div>
-      <div class="pp-r"><span class="pp-l">Est. Restore</span><span class="pp-v">${p.etr ? fmt(p.etr) : "Assessing"}</span></div>
-      <div class="pp-r"><span class="pp-l">ID</span><span class="pp-v" style="font-size:.7rem;color:#64748b">${p.id || "—"}</span></div>
-    `, {maxWidth: 280});
-  });
-
-  // Side panel
-  const sorted = [...feats].sort((a,b) => (b.properties.customers_affected||0) - (a.properties.customers_affected||0));
-  const panel = document.getElementById("panel");
-  panel.innerHTML = sorted.slice(0, 20).map(f => {
-    const p = f.properties;
-    const n = p.customers_affected || 0;
-    const s = sev(n);
-    const isDec = p.provider && p.provider.includes("Co-op");
-    const g = f.geometry;
-    let lat = 0, lng = 0;
-    if (g.type === "Point") { lng = g.coordinates[0]; lat = g.coordinates[1]; }
-    else if (g.type === "Polygon") { const cs = g.coordinates[0]; lat = cs.reduce((a,c)=>a+c[1],0)/cs.length; lng = cs.reduce((a,c)=>a+c[0],0)/cs.length; }
-
-    return `<div class="card" onclick="map.flyTo([${lat},${lng}],13)">
-      <div class="card-top">
-        <span class="prov ${isDec?'prov-e':'prov-d'}">${isDec?'DE Electric Co-op':'Delmarva Power'}</span>
-        <span class="card-n" style="color:${s.c}">${n.toLocaleString()}</span>
-      </div>
-      <div class="card-r"><span class="l">Cause</span><span class="v">${p.cause||'Unknown'}</span></div>
-      <div class="card-r"><span class="l">Since</span><span class="v">${fmt(p.start_time)}</span></div>
-      <div class="card-r"><span class="l">ETA</span><span class="v">${p.etr?fmt(p.etr):'Assessing'}</span></div>
-    </div>`;
-  }).join("");
+function normalizeDelmarva(outages) {
+  return (outages ?? []).map(o => {
+    const coords = o.geom?.p?.[0] ? decodePolyline(o.geom.p[0]) : [];
+    const [lat, lng] = coords[0] ?? [null, null];
+    return {
+      id: "delmarva-" + o.id, utility: "delmarva", lat, lng,
+      customers: o.desc?.cust_a?.val ?? 0,
+      count: o.desc?.n_out ?? 1,
+      etr: o.desc?.etr === "ETR-NULL" ? "Unknown" : (o.desc?.etr ?? "Unknown"),
+      cause: o.desc?.cause ?? "Unknown",
+      crew: o.desc?.crew_status ?? null,
+      start: o.desc?.start_time ?? null,
+    };
+  }).filter(o => o.lat && o.lng);
 }
 
-// ── LOAD DATA ──
-async function loadData() {
-  const b = document.getElementById("badge");
-  b.textContent = "LOADING..."; b.className = "badge b-stale";
-
-  try {
-    const resp = await fetch(DATA_URL + "?t=" + Date.now());
-    if (!resp.ok) throw new Error("HTTP " + resp.status);
-    const data = await resp.json();
-    render(data);
-  } catch (e) {
-    console.error("Failed to load outage data:", e);
-    b.textContent = "ERROR"; b.className = "badge b-err";
-    document.getElementById("ts").textContent = "Could not load data. Make sure the scraper has run at least once and the REPO variable is set correctly.";
-    document.getElementById("empty").style.display = "block";
-    document.querySelector("#empty h2").textContent = "Data Not Available";
-    document.querySelector("#empty p").textContent = "Check that the GitHub repo path is correct in this file and that the scraper Action has run successfully at least once.";
-  }
+function normalizeDEC(rows) {
+  return (rows ?? []).map(o => {
+    const poly = DEC_POLY[o.ref] ?? {};
+    return {
+      id: "dec-" + o.ref, utility: "dec",
+      lat: poly.lat ?? null, lng: poly.lng ?? null,
+      customers: o.affected ?? 0,
+      count: 1, etr: "Unknown", cause: "Unknown",
+      crew: null, start: null, zip: poly.name ?? String(o.ref),
+    };
+  }).filter(o => o.lat && o.lng);
 }
 
-// Initial load and auto-refresh every 5 minutes
-loadData();
-setInterval(loadData, 5 * 60 * 1000);
+function project(lat, lng) {
+  return {
+    x: ((lng - DE_BOUNDS.minLng) / (DE_BOUNDS.maxLng - DE_BOUNDS.minLng)) * W,
+    y: ((DE_BOUNDS.maxLat - lat)  / (DE_BOUNDS.maxLat - DE_BOUNDS.minLat)) * H,
+  };
+}
+
+function App() {
+  const [outages, setOutages] = useState([]);
+  const [filter, setFilter]   = useState({ delmarva: true, dec: true });
+  const [hovered, setHovered] = useState(null);
+  const [status, setStatus]   = useState({ delmarva: "idle", dec: "idle" });
+  const [lastPoll, setLastPoll] = useState(null);
+  const [log, setLog]         = useState([]);
+  const logRef = useRef([]);
+
+  const addLog = (msg) => {
+    const line = "[" + new Date().toLocaleTimeString() + "] " + msg;
+    logRef.current = [line, ...logRef.current.slice(0, 14)];
+    setLog([...logRef.current]);
+  };
+
+  const fetchDelmarva = useCallback(async () => {
+    setStatus(s => ({ ...s, delmarva: "loading" }));
+    addLog("Fetching Delmarva...");
+    try {
+      const r = await fetch(API + "/delmarva/detail");
+      const d = await r.json();
+      const norm = normalizeDelmarva(d.outages);
+      setOutages(p => [...p.filter(o => o.utility !== "delmarva"), ...norm]);
+      setStatus(s => ({ ...s, delmarva: "ok" }));
+      addLog("✓ Delmarva: " + norm.length + " clusters, " + norm.reduce((a,o)=>a+o.customers,0).toLocaleString() + " customers");
+    } catch(e) {
+      setStatus(s => ({ ...s, delmarva: "error" }));
+      addLog("✗ Delmarva: " + e.message);
+    }
+  }, []);
+
+  const fetchDEC = useCallback(async () => {
+    setStatus(s => ({ ...s, dec: "loading" }));
+    addLog("Fetching DEC...");
+    try {
+      const r = await fetch(API + "/dec/outages?tiles=1,0");
+      const d = await r.json();
+      const rows = Array.isArray(d) ? d : (d.items ?? d.outages ?? []);
+      const norm = normalizeDEC(rows);
+      setOutages(p => [...p.filter(o => o.utility !== "dec"), ...norm]);
+      setStatus(s => ({ ...s, dec: "ok" }));
+      addLog("✓ DEC: " + norm.length + " zones, " + norm.reduce((a,o)=>a+o.customers,0).toLocaleString() + " customers");
+    } catch(e) {
+      setStatus(s => ({ ...s, dec: "error" }));
+      addLog("✗ DEC: " + e.message);
+    }
+  }, []);
+
+  const fetchAll = useCallback(async () => {
+    await Promise.all([fetchDelmarva(), fetchDEC()]);
+    setLastPoll(new Date());
+  }, [fetchDelmarva, fetchDEC]);
+
+  useEffect(() => { fetchAll(); }, []);
+  useEffect(() => { const t = setInterval(fetchAll, POLL_MS); return () => clearInterval(t); }, [fetchAll]);
+
+  const visible = outages.filter(o => filter[o.utility]);
+  const totals = {
+    delmarva: outages.filter(o=>o.utility==="delmarva").reduce((a,o)=>a+o.customers,0),
+    dec:      outages.filter(o=>o.utility==="dec").reduce((a,o)=>a+o.customers,0),
+  };
+
+  return React.createElement("div", { style: { padding: 16 } },
+    // Header
+    React.createElement("div", { style: { marginBottom: 12 } },
+      React.createElement("h1", { style: { fontSize: 20, fontWeight: 700 } }, "⚡ Delaware Outage Map"),
+      React.createElement("p", { style: { marginTop: 3, fontSize: 12, color: "#94a3b8" } },
+        "Delmarva Power + Delaware Electric Coop · Auto-refreshes every 60s" +
+        (lastPoll ? " · Updated " + lastPoll.toLocaleTimeString() : "")
+      )
+    ),
+    // Toggles
+    React.createElement("div", { style: { display: "flex", gap: 10, marginBottom: 12, flexWrap: "wrap", alignItems: "center" } },
+      ...Object.entries(SOURCES).map(([key, src]) =>
+        React.createElement("button", {
+          key, onClick: () => setFilter(f => ({ ...f, [key]: !f[key] })),
+          style: { display:"flex", alignItems:"center", gap:8, padding:"6px 14px",
+            borderRadius:8, border:"2px solid "+src.color,
+            background: filter[key] ? src.color+"22" : "transparent",
+            color:"#f1f5f9", fontSize:12, fontWeight:600 }
+        },
+          React.createElement("span", { style: { width:10, height:10, borderRadius:"50%",
+            background: filter[key] ? src.color : "#334155", display:"inline-block" }}),
+          src.label,
+          React.createElement("span", { style: { color:"#94a3b8", fontWeight:400 } },
+            " " + totals[key].toLocaleString() + " affected"),
+          status[key]==="loading" ? " ⏳" : status[key]==="error" ? " ⚠️" : status[key]==="ok" ?
+            React.createElement("span", { style:{color:"#86efac"} }, " ●") : ""
+        )
+      ),
+      React.createElement("button", {
+        onClick: fetchAll,
+        style: { marginLeft:"auto", padding:"6px 12px", borderRadius:8,
+          border:"1px solid #334155", background:"#1e293b", color:"#94a3b8", fontSize:11 }
+      }, "↻ Refresh")
+    ),
+    // Map + Log
+    React.createElement("div", { style: { display:"flex", gap:16, flexWrap:"wrap" } },
+      // SVG Map
+      React.createElement("div", { style: { position:"relative", flexShrink:0 } },
+        React.createElement("svg", { width:W, height:H,
+          style: { background:"#172554", borderRadius:12, border:"1px solid #1e3a5f", display:"block" } },
+          // Grid lines
+          ...[38.5,39.0,39.5].map(lat => {
+            const {y}=project(lat,-75);
+            return React.createElement("line",{key:"h"+lat,x1:0,y1:y,x2:W,y2:y,stroke:"#1e3a5f",strokeWidth:1,strokeDasharray:"4 3"});
+          }),
+          ...[{l:"Kent Co.",lat:39.15,lng:-75.52},{l:"Sussex Co.",lat:38.62,lng:-75.35},{l:"New Castle",lat:39.65,lng:-75.55}].map(c => {
+            const p=project(c.lat,c.lng);
+            return React.createElement("text",{key:c.l,x:p.x,y:p.y,textAnchor:"middle",fill:"#1e40af",fontSize:11,fontWeight:"600",pointerEvents:"none"},c.l);
+          }),
+          // Outage dots
+          ...visible.map(o => {
+            if (!o.lat||!o.lng) return null;
+            const {x,y}=project(o.lat,o.lng);
+            if (x<0||x>W||y<0||y>H) return null;
+            const col=SOURCES[o.utility]?.color??"#ccc";
+            const r=Math.max(5,Math.min(24,Math.sqrt(o.customers||1)*0.7));
+            const isH=hovered?.id===o.id;
+            return React.createElement("g", { key:o.id, style:{cursor:"pointer"},
+              onMouseEnter:()=>setHovered(o), onMouseLeave:()=>setHovered(null) },
+              isH && React.createElement("circle",{cx:x,cy:y,r:r+6,fill:col,fillOpacity:0.15}),
+              React.createElement("circle",{cx:x,cy:y,r,fill:col,fillOpacity:isH?0.95:0.72,
+                stroke:isH?"#fff":col,strokeWidth:isH?2:0.5}),
+              r>13 && React.createElement("text",{x,y:y+4,textAnchor:"middle",fill:"#fff",fontSize:9,fontWeight:"700",pointerEvents:"none"},
+                o.customers>=1000?(o.customers/1000).toFixed(1)+"k":o.customers)
+            );
+          }).filter(Boolean)
+        ),
+        // Tooltip
+        hovered && (()=>{
+          const {x,y}=project(hovered.lat,hovered.lng);
+          const col=SOURCES[hovered.utility]?.color??"#ccc";
+          return React.createElement("div", {
+            style:{ position:"absolute", left:Math.min(x+14,W-190), top:Math.max(y-80,4),
+              background:"#0f172a", border:"1px solid "+col, borderRadius:10,
+              padding:"10px 14px", fontSize:12, pointerEvents:"none", width:185, zIndex:10,
+              boxShadow:"0 4px 24px rgba(0,0,0,.6)" }},
+            React.createElement("div",{style:{fontWeight:700,color:col,marginBottom:5}},SOURCES[hovered.utility]?.label),
+            React.createElement("div",null,React.createElement("span",{style:{fontSize:18,fontWeight:700}},hovered.customers.toLocaleString())," customers"),
+            hovered.count>1 && React.createElement("div",{style:{color:"#94a3b8"}},hovered.count+" outages clustered"),
+            hovered.zip && React.createElement("div",{style:{color:"#94a3b8"}},"ZIP: "+hovered.zip),
+            hovered.cause!=="Unknown" && React.createElement("div",{style:{color:"#94a3b8"}},"Cause: "+hovered.cause),
+            React.createElement("div",{style:{color:hovered.etr==="Unknown"?"#64748b":"#fbbf24",marginTop:4}},
+              "ETR: "+(hovered.etr==="Unknown"?"Not available":new Date(hovered.etr).toLocaleTimeString())),
+            hovered.start && React.createElement("div",{style:{color:"#475569",fontSize:10,marginTop:3}},
+              "Since "+new Date(hovered.start).toLocaleTimeString())
+          );
+        })()
+      ),
+      // Log panel
+      React.createElement("div", {
+        style:{ flex:1, minWidth:200, background:"#1e293b", borderRadius:10,
+          padding:"12px 14px", fontSize:11, fontFamily:"monospace" }},
+        React.createElement("div",{style:{fontWeight:700,fontSize:12,fontFamily:"system-ui",marginBottom:8,color:"#f1f5f9"}},"Activity Log"),
+        ...log.map((l,i) =>
+          React.createElement("div",{key:i,style:{
+            color:l.includes("✓")?"#86efac":l.includes("✗")?"#fca5a5":"#64748b",
+            lineHeight:1.9, borderBottom:"1px solid #0f172a", paddingBottom:2}},l)
+        ),
+        log.length===0 && React.createElement("div",{style:{color:"#334155"}},"Loading...")
+      )
+    )
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(App));
 </script>
 </body>
 </html>
