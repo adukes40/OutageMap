@@ -1,7 +1,7 @@
 {
   "type": "FeatureCollection",
   "metadata": {
-    "generated_at": "2026-02-28T19:22:17.139042+00:00",
+    "generated_at": "2026-02-28T19:44:58.231133+00:00",
     "sources": [
       {
         "name": "Delmarva Power",
@@ -11,11 +11,33 @@
       {
         "name": "DE Electric Co-op",
         "via": "PowerOutage.us",
-        "count": 0
+        "count": 1
       }
     ],
-    "total_outages": 0,
-    "total_customers_affected": 0
+    "total_outages": 1,
+    "total_customers_affected": 840
   },
-  "features": []
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -75.35,
+          38.68
+        ]
+      },
+      "properties": {
+        "id": "dec-sussex-202602281944",
+        "provider": "DE Electric Co-op",
+        "customers_affected": 840,
+        "cause": "Unknown",
+        "start_time": "",
+        "etr": "",
+        "area": "Sussex County",
+        "source": "poweroutage.us",
+        "scraped_at": "2026-02-28T19:44:58.231088+00:00"
+      }
+    }
+  ]
 }
