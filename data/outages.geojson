@@ -1,7 +1,7 @@
 {
   "type": "FeatureCollection",
   "metadata": {
-    "generated_at": "2026-03-01T14:00:05.803722+00:00",
+    "generated_at": "2026-03-01T14:23:49.885048+00:00",
     "sources": [
       {
         "name": "Delmarva Power",
@@ -11,33 +11,11 @@
       {
         "name": "DE Electric Co-op",
         "via": "PowerOutage.us",
-        "count": 1
+        "count": 0
       }
     ],
-    "total_outages": 1,
-    "total_customers_affected": 50
+    "total_outages": 0,
+    "total_customers_affected": 0
   },
-  "features": [
-    {
-      "type": "Feature",
-      "geometry": {
-        "type": "Point",
-        "coordinates": [
-          -75.4,
-          38.75
-        ]
-      },
-      "properties": {
-        "id": "dec-total-202603011400",
-        "provider": "DE Electric Co-op",
-        "customers_affected": 50,
-        "cause": "Unknown",
-        "start_time": "",
-        "etr": "",
-        "area": "DEC Service Area",
-        "source": "poweroutage.us",
-        "scraped_at": "2026-03-01T14:00:05.803660+00:00"
-      }
-    }
-  ]
+  "features": []
 }
